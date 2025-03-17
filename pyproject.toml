@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "arborist"
 version = "0.1.0"
-description = "A tool to rank  SNV phylogenies inferred from bulk DNA sequencing via low-pass scDNA-seq data."
+description = "A tool to rank SNV phylogenies inferred from bulk DNA sequencing via low-pass scDNA-seq data."
 authors = [
     { name = "Leah L. Weber", email = "llweber@mdanderson.org" }
 ]
