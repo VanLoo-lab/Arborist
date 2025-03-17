@@ -1,0 +1,65 @@
+# Byte-compiled / compiled Python files
+__pycache__/
+*.py[cod]
+*$PYTHON_EXTENSIONS
+
+# Virtual environments
+venv/
+env/
+.venv/
+.conda/
+.micromamba/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS system files
+.DS_Store
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+*.pkl
+*.h5
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Cython cache
+cython_debug/
+
+# Testing and coverage
+htmlcov/
+.coverage
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Editor backups
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.~*
+
+# PyInstaller
+*.spec
+
+# Jupyter Notebook metadata
+.ipynb_checkpoints/
