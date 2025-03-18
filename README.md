@@ -231,7 +231,7 @@ min_cells = 20
 #compute the cmb of each tree, clade and cell in the arborist output dataframe cell_assign
 cmb_df = cmb(cell_assign,trees,clade_snvs, read_counts, min_cells)
 
-print(cmb_df)
+print(cmb_df.head())
 ```
 
 
