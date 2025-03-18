@@ -32,3 +32,4 @@ where = ["src"]
 
 [project.scripts]
 arborist = "arborist.arborist:main"
+cmb = "arborist.cmb:main"

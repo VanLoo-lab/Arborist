@@ -11,27 +11,59 @@ from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Tree ranking script")
-    parser.add_argument("-R",
-        "--read_counts", required=True, help="Path to read counts CSV file with columns 'cell', 'cluster', 'total', 'alt'"
+    parser.add_argument(
+        "-R",
+        "--read_counts",
+        required=True,
+        help="Path to read counts CSV file with columns 'cell', 'cluster', 'total', 'alt'",
     )
     parser.add_argument("-T", "--trees", required=True, help="Path to tree file")
-    parser.add_argument("--sapling", action="store_true", help="Use sapling format for tree edges, otherwise conipher format is assumed.")
-    parser.add_argument("--alpha", required=False, type=float, default=0.001, help="Per base sequencing error")
-    parser.add_argument("--topn", required=False, type=int, default=25, help="Filter only the top n trees, default is 25.")
-    parser.add_argument("--ranking", required=False, type=str, help="Path to where tree ranking output should be saved")
-    parser.add_argument("--cell-assign", required=False, type=str, help="Path to where cell assignments output should be saved")
-    parser.add_argument("-v", "--verbose", help="Print verbose output", action="store_true")
-    parser.add_argument("-d", "--draw", required=False, type=str, help="Path to save the tree image")
+    parser.add_argument(
+        "--sapling",
+        action="store_true",
+        help="Use sapling format for tree edges, otherwise conipher format is assumed.",
+    )
+    parser.add_argument(
+        "--alpha",
+        required=False,
+        type=float,
+        default=0.001,
+        help="Per base sequencing error",
+    )
+    parser.add_argument(
+        "--topn",
+        required=False,
+        type=int,
+        default=25,
+        help="Filter only the top n trees, default is 25.",
+    )
+    parser.add_argument(
+        "--ranking",
+        required=False,
+        type=str,
+        help="Path to where tree ranking output should be saved",
+    )
+    parser.add_argument(
+        "--cell-assign",
+        required=False,
+        type=str,
+        help="Path to where cell assignments output should be saved",
+    )
+    parser.add_argument(
+        "-v", "--verbose", help="Print verbose output", action="store_true"
+    )
+    parser.add_argument(
+        "-d", "--draw", required=False, type=str, help="Path to save the tree image"
+    )
 
     return parser.parse_args()
 
 
-
-
-
-def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rate=0.001):
+def process_read_counts_and_calculate_probabilities(
+    read_counts, tree, error_rate=0.001
+):
     """
-    Processes read counts and calculates probabilities for cell-to-clone assignments 
+    Processes read counts and calculates probabilities for cell-to-clone assignments
     based on a given evolutionary tree and error rate.
 
     Parameters
@@ -43,7 +75,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
         - 'total': Total number of reads.
         - 'alt': Number of alternate reads.
     tree : list of tuple
-        A list of tuples representing the evolutionary tree. Each tuple is of the form 
+        A list of tuples representing the evolutionary tree. Each tuple is of the form
         (parent, child), where `parent` and `child` are cluster identifiers.
     error_rate : float, optional
         The sequencing error rate, by default 0.001.
@@ -55,12 +87,12 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
         - product : float
             The sum of the maximum log-likelihoods for each cell.
         - Cell_assignment : pandas.DataFrame
-            A DataFrame where rows correspond to cells and columns correspond to clones. 
+            A DataFrame where rows correspond to cells and columns correspond to clones.
             Each entry represents the log-likelihood of the cell being assigned to the clone.
 
     Notes
     -----
-    - The function calculates the likelihood of each cell being assigned to each clone 
+    - The function calculates the likelihood of each cell being assigned to each clone
       based on the evolutionary tree and read counts.
     - The probabilities for mutation and non-mutation are derived from the error rate.
     - The binomial log probability mass function is used to compute log-likelihoods.
@@ -98,7 +130,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
         columns=["Child", "Ancestors"],
     )
 
-    #filter out any clusters that are not in the tree.
+    # filter out any clusters that are not in the tree.
     filtered_read_counts = read_counts[
         read_counts["cluster"].isin(evolution_matrix["Child"])
     ]
@@ -143,8 +175,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
     return product, Cell_assignment
 
 
-
-def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
+def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     """
     Rank SNV phylogenetic trees based on their likelihood given scDNA-seq read count data and calculate entropy for cell assignments.
     This function processes a list of phylogenetic trees and their associated read counts to calculate
@@ -180,21 +211,23 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
     >>> print(Entropy.head())
     """
 
-
     tree_probabilities = []
     combined_outputs = []
 
     for idx, tree in enumerate(tree_list):
-        
-        raw_probability, Cell_assignment_df = process_read_counts_and_calculate_probabilities(read_counts, tree, alpha)
+
+        raw_probability, Cell_assignment_df = (
+            process_read_counts_and_calculate_probabilities(read_counts, tree, alpha)
+        )
 
         # Extract actual node labels from the tree (not "Clone_X" format)
         clone_labels = Cell_assignment_df.columns.tolist()
-        assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(axis=1)
-       
+        assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(
+            axis=1
+        )
+
         clone_labels = [f"clone_{x}_posterior" for x in clone_labels]
         Cell_assignment_df.columns = clone_labels
-      
 
         # Assign each cell to the most probable clone
         Cell_assignment_df["clone"] = assigned_clones
@@ -207,9 +240,8 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
         if verbose:
             print(f"Processed tree {idx} with likelihood {raw_probability}.")
 
-
     if verbose:
-        print(f"Processed {len(tree_list)} trees.") 
+        print(f"Processed {len(tree_list)} trees.")
         print("Writing output to disk...")
 
     # Create a DataFrame of tree probabilities
@@ -228,10 +260,15 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
 
     # Filter Cell_assignment_df to include only top-ranked trees
     filtered_assignments = pd.concat(combined_outputs, ignore_index=True)
-    filtered_assignments = filtered_assignments[filtered_assignments["tree"].isin(ranked_trees["tree"])]
+    filtered_assignments = filtered_assignments[
+        filtered_assignments["tree"].isin(ranked_trees["tree"])
+    ]
 
     # Compute posterior probabilities
-    posterior_probs = np.exp(filtered_assignments[clone_labels] - logsumexp(filtered_assignments[clone_labels], axis=1, keepdims=True))
+    posterior_probs = np.exp(
+        filtered_assignments[clone_labels]
+        - logsumexp(filtered_assignments[clone_labels], axis=1, keepdims=True)
+    )
 
     # Compute entropy
     entropy_values = posterior_probs.apply(lambda row: entropy(row, base=2), axis=1)
@@ -239,8 +276,10 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
     # Create a single output DataFrame
     cell_assignments = pd.DataFrame()
     cell_assignments["cell"] = filtered_assignments["index"]  # Use original cell labels
-    cell_assignments["tree"] = filtered_assignments["tree"]   # Use tree index directly
-    cell_assignments["clone"] = filtered_assignments["clone"] # Use actual node label from the tree
+    cell_assignments["tree"] = filtered_assignments["tree"]  # Use tree index directly
+    cell_assignments["clone"] = filtered_assignments[
+        "clone"
+    ]  # Use actual node label from the tree
     cell_assignments["entropy"] = entropy_values
 
     # Rename posterior probability columns to actual clone labels
@@ -253,30 +292,34 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
 def main():
     args = parse_arguments()
     read_counts = pd.read_csv(args.read_counts)
-    
+
     read_trees = read_tree_edges_conipher
- 
+
     if args.sapling:
         read_trees = read_tree_edges_sapling
 
-
     candidate_trees = read_trees(args.trees)
-    ranked_trees, cell_assignments = rank_trees(candidate_trees, read_counts, alpha=args.alpha, topn= args.topn, verbose=args.verbose)
+    ranked_trees, cell_assignments = rank_trees(
+        candidate_trees,
+        read_counts,
+        alpha=args.alpha,
+        topn=args.topn,
+        verbose=args.verbose,
+    )
 
     tree_idx = ranked_trees["tree"].tolist()[0]
     if args.draw:
-        
+
         best_tree = cell_assignments[cell_assignments["tree"] == tree_idx]
         cell_assign = dict(zip(best_tree["cell"], best_tree["clone"]))
-        visualize_tree(candidate_trees[tree_idx], cell_assignment=cell_assign, output_file=args.draw)
+        visualize_tree(
+            candidate_trees[tree_idx],
+            cell_assignment=cell_assign,
+            output_file=args.draw,
+        )
 
     # Save results
     if args.ranking:
         ranked_trees.to_csv(args.ranking, index=False)
     if args.cell_assign:
         cell_assignments.to_csv(args.cell_assign, index=False)
-
-     
-   
-
-

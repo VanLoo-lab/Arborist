@@ -1,5 +1,72 @@
 import pygraphviz as pgv
 from collections import defaultdict
+import itertools
+
+
+def get_nodes(adj_list):
+    """
+    Given an adjacency list, return all nodes in the graph.
+
+    Parameters
+    ----------
+    adj_list : dict of int to list of int
+        An adjacency list where each key is a node and the value is a list of its
+        children.
+    Returns
+    -------
+    set
+        A set of all nodes in the graph.
+    """
+    return set(adj_list.keys()) | set(itertools.chain.from_iterable(adj_list.values()))
+
+
+def edge_list_to_adj_list(edges):
+    """
+    Converts a list of edges to an adjacency list.
+
+    Parameters
+    ----------
+    edges : list of tuple of int
+        A list of edges, where each edge is a tuple of two integers representing
+        a parent-child relationship.
+
+    Returns
+    -------
+    dict of int to list of int
+        An adjacency list where each key is a node and the value is a list of its
+        children.
+    """
+    adjacency_list = defaultdict(list)
+    for parent, child in edges:
+        adjacency_list[parent].append(child)
+    return adjacency_list
+
+
+def get_descendants(tree_dict, node):
+    """
+    Given a tree as a list of (parent, child) edges, return all descendants of a given node.
+
+    Parameters
+    ----------
+    tree_dict : dict of int to list of int
+        A dictionary where each key is a node and the value is a list of its children.
+    node : int
+        The node for which to find descendants.
+
+    Returns
+    -------
+    set
+        A set of all descendant nodes.
+    """
+
+    # Recursive function to collect descendants
+    def collect_descendants(n):
+        descendants = set(tree_dict.get(n, []))  # Get children (if any)
+        for child in tree_dict.get(n, []):
+            descendants.update(collect_descendants(child))
+        return descendants
+
+    return collect_descendants(node)
 
 
 def read_tree_edges_conipher(file_path):
@@ -170,11 +237,9 @@ def visualize_tree(tree, cell_assignment=None, output_file=None):
         cell_mapping = defaultdict(list)
         for node, cell in cell_assignment.items():
             cell_mapping[cell].append(node)
-        
-        for node , cells in cell_mapping.items():
-            labels[node] = f"{node}\n({len(cells)} cells)"
 
-   
+        for node, cells in cell_mapping.items():
+            labels[node] = f"{node}\n({len(cells)} cells)"
 
     graph = pgv.AGraph(directed=True)
 
@@ -186,15 +251,40 @@ def visualize_tree(tree, cell_assignment=None, output_file=None):
 
     # Add cell assignment information
 
-    # if cell_mapping: 
+    # if cell_mapping:
     #     for node, cells in cell_mapping.items():
     #         graph.add_node(f"{node}_cells", shape="none", label=f"{len(cells)} cells", color="none")
     #         graph.add_edge(f"{node}_cells", node, style="dashed", penwidth=1, arrowhead="none")
-        
 
-    
     if output_file.endswith(".dot"):
         graph.write(output_file)  # Save as a DOT file
-        
+
     elif output_file.endswith(".png"):
         graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
+
+
+# def parse_file(fname, sep_word="tree", nskip=0, sep="\t"):
+#     """
+#     Parses a text file containing multiple edge lists of trees.
+#     @param fname: str filename to be parsed
+#     @param sep_word: str a word contained in the line separating distinct trees (default 'tree')
+#     @param nksip: int number of rows to skip before parsing
+#     """
+#     tree_list = []
+#     with open(fname, "r+") as file:
+#         new_tree = None
+#         for idx, line in enumerate(file):
+#             if idx < nskip:
+#                 continue
+#             if sep_word in line:
+#                 if new_tree:
+#                     tree_list.append(new_tree)
+#                 new_tree = []
+
+#             else:
+#                 edge = [int(e) for e in line.strip().split(sep)]
+#                 new_tree.append((edge[0], edge[1]))
+#         if new_tree:
+#             tree_list.append(new_tree)
+#     trees = [nx.DiGraph(edge_list) for edge_list in tree_list]
+#     return trees

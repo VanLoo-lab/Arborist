@@ -14,7 +14,7 @@ This script ranks evolutionary trees inferred from bulk DNA sequencing data by l
         - [Read counts format](#read-counts-file-format)
     - [Output Data](#output-files)
 - [Usage](#usage)
-    - [CLI tool usage](#cli-tool-usage)
+    - [Arborist CLI tool](#arborist-cli-tool)
     - [`arborist` package](#arborist-package)
 
 
@@ -23,6 +23,7 @@ This script ranks evolutionary trees inferred from bulk DNA sequencing data by l
 - Assigns cells to their most probable clones and computes the posterior probability of assignment to each clone in the tree.
 - Computes the likelihood of each tree.
 - Outputs ranked trees and cell assignments.
+- Functions to compute the cell mutational burden (cmb) on the output of `arborist` for additional valdiation.
 
 
 ---
@@ -53,6 +54,7 @@ The script requires the following Python libraries:
 - `pandas`
 - `numpy`
 - `scipy`
+- `pygrahviz`
 
 
 
@@ -136,7 +138,7 @@ Example input and output files can be found in the `example/input` and `example/
 
 ## Usage
 
-### CLI Tool Usage
+### Arborist CLI tool
 ```
 arborist -h                                                                                       usage: arborist [-h] --read_counts READ_COUNTS -T TREES [--sapling] [--alpha ALPHA] [--topn TOPN] [--ranking RANKING] [--cell_assign CELL_ASSIGN]
 
@@ -155,10 +157,46 @@ options:
                         Path to where cell assignments output should be saved
 ```
 
+#### Example
+```bash
+   arborist -R {read_count_fname} -T {trees_fname} \
+   --alpha 0.001 --ranking {output_tree_rank_fname} \
+   --draw {output_png_or_dot_fname} \
+   --cell-assign {output_cell_assignment_fname} --verbose
+```
+
+### CMB CLI tool usage
+```
+cmb -h                                                                                        
+usage: cmb [-h] -R READ_COUNTS -T TREES [--cell-assign CELL_ASSIGN] [--sapling] [--min-cells MIN_CELLS] [-o OUT] [--conipher]
+
+options:
+  -h, --help            show this help message and exit
+  -R READ_COUNTS, --read_counts READ_COUNTS
+                        Path to read counts CSV file with columns 'cell','snv', 'cluster', 'total', 'alt'
+  -T TREES, --trees TREES
+                        Path to tree file
+  --cell-assign CELL_ASSIGN
+                        Path to where cell assignments, with columns 'cell', 'snv', 'tree', 'clone'
+  --sapling             Use sapling format for tree edges, otherwise conipher format is assumed.
+  --min-cells MIN_CELLS
+                        minimum number of cells to compute the scores for a clade
+  -o OUT, --out OUT     filename where cmb values will be saved
+  --conipher            if the tree is in conipher format
+
+```
+
+#### Example
+```bash
+   cmb -R {read_count_fname} -T {trees_fname} \
+   --cell-assign {output_cell_assignment_fname} \
+   --min-cells 20 -o {output_cmb_fname}
+```
 
 ### `arborist` Package
 
-```
+Run `arborist` on a set of candidate trees.
+```python
 import pandas as pd 
 from arborist import read_tree_edges_conipher, rank_trees
 
@@ -174,6 +212,27 @@ print(cell_assign.head())
 
 
 ```
+
+Perform validation on the trees using the cell mutational burden `cmb` metric.
+```python
+from arborist.cmb import cmb
+
+#read a mapping of cluster to a list of SNVs from the read_counts
+psi = dat[["snv", "cluster"]].drop_duplicates()
+psi = dict(zip(psi["snv"], psi["cluster"]))
+clade_snvs = defaultdict(list)
+for j, cluster in psi.items():
+   clade_snvs[cluster].append(j)
+
+#minumum number of cells within/outside of clade needed to compute the metric.
+min_cells = 20
+
+#compute the cmb of each tree, clade and cell in the arborist output dataframe cell_assign
+cmb_df = cmb(cell_assign,trees,clade_snvs, read_counts, min_cells)
+
+print(cmb_df)
+```
+
 
 
 <!-- ## Example Run
