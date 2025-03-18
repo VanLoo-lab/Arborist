@@ -147,7 +147,7 @@ def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
     return trees
 
 
-def draw(tree, cell_assignment=None, output_file=None):
+def visualize_tree(tree, cell_assignment=None, output_file=None):
     """
     Visualizes a tree using Graphviz.
 
@@ -165,22 +165,31 @@ def draw(tree, cell_assignment=None, output_file=None):
         The path to save the visualization. If not provided, the visualization
         will be displayed on the screen.        "
     """
+    labels = {n: str(n) for n in tree}
+    if cell_assignment:
+        cell_mapping = defaultdict(list)
+        for node, cell in cell_assignment.items():
+            cell_mapping[cell].append(node)
+        
+        for node , cells in cell_mapping.items():
+            labels[node] = f"{node}\n({len(cells)} cells)"
+
+   
+
     graph = pgv.AGraph(directed=True)
 
     # Add nodes with labels and shapes
     for parent, child in tree:
-        graph.add_node(parent, shape="circle", label=f"{parent}")
-        graph.add_node(child, shape="circle", label=f"{child}")
+        graph.add_node(parent, shape="circle", label=labels[parent])
+        graph.add_node(child, shape="circle", label=labels[child])
         graph.add_edge(parent, child)
 
     # Add cell assignment information
-    cell_mapping = defaultdict(list)
-    for node, cell in cell_assignment.items():
-        cell_mapping[cell].append(node)
-    if cell_mapping: 
-        for node, cells in cell_mapping.items():
-            graph.add_node(f"{node}_cells", shape="square", label=f"{len(cells)} cells")
-            graph.add_edge(f"{node}_cells", node)
+
+    # if cell_mapping: 
+    #     for node, cells in cell_mapping.items():
+    #         graph.add_node(f"{node}_cells", shape="none", label=f"{len(cells)} cells", color="none")
+    #         graph.add_edge(f"{node}_cells", node, style="dashed", penwidth=1, arrowhead="none")
         
 
     

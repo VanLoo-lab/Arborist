@@ -5,6 +5,8 @@ from scipy.stats import binom
 from scipy.special import logsumexp
 from collections import defaultdict
 from scipy.stats import entropy
+import pygraphviz as pgv
+from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
 
 
 def parse_arguments():
@@ -19,153 +21,12 @@ def parse_arguments():
     parser.add_argument("--ranking", required=False, type=str, help="Path to where tree ranking output should be saved")
     parser.add_argument("--cell-assign", required=False, type=str, help="Path to where cell assignments output should be saved")
     parser.add_argument("-v", "--verbose", help="Print verbose output", action="store_true")
+    parser.add_argument("-d", "--draw", required=False, type=str, help="Path to save the tree image")
 
     return parser.parse_args()
 
 
-def read_tree_edges_conipher(file_path):
-    """
-    Reads tree edges from a file and organizes them into a list of trees.
 
-    Each tree is represented as a list of tuples, where each tuple contains
-    two integers representing a parent-child relationship. Trees are separated
-    by empty lines or comment lines (lines starting with `#`) in the file.
-
-    Parameters
-    ----------
-    file_path : str
-        The path to the file containing tree edge data. The file should have
-        space-separated integers on each line representing parent-child
-        relationships.
-
-    Returns
-    -------
-    list of list of tuple of int
-        A list of trees, where each tree is a list of tuples. Each tuple
-        contains two integers representing a parent-child relationship.
-
-    Notes
-    -----
-    - Empty lines and lines starting with `#` are treated as separators
-      between trees.
-    - If the file ends without a separator, the last tree is still included
-      in the output.
-
-    Examples
-    --------
-    Given a file with the following content:
-
-    ```
-    # Tree 1
-    1 2
-    1 3
-
-    # Tree 2
-    4 5
-    4 6
-    ```
-
-    Calling `read_tree_edges_conipher("path/to/file")` will return:
-
-    >>> read_tree_edges_conipher("path/to/file")
-    [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]
-    """
-    trees = []
-    current_tree = []
-
-    with open(file_path, "r") as file:
-        for line in file:
-            line = line.strip()
-            if not line or line.startswith("#"):  # Skip empty lines and comments
-                if current_tree:  # Store previous tree before starting a new one
-                    trees.append(current_tree)
-                    current_tree = []
-                continue
-
-            # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
-            if len(parts) == 2:
-                current_tree.append((int(parts[0]), int(parts[1])))
-
-    if current_tree:  # Append last tree if exists
-        trees.append(current_tree)
-
-    return trees
-
-
-def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
-    """
-    Reads tree edges from a file and organizes them into a list of trees.
-
-    Each tree is represented as a list of tuples, where each tuple contains
-    two integers representing a parent-child relationship. Trees are separated
-    in the file by lines starting with a specified header prefix.
-
-    Parameters
-    ----------
-    file_path : str
-        The path to the file containing the tree edge data.
-    header_prefix : str, optional
-        The prefix that indicates the start of a new tree in the file.
-        Default is "backbone tree".
-
-    Returns
-    -------
-    list of list of tuple of int
-        A list of trees, where each tree is a list of tuples. Each tuple
-        represents a parent-child relationship as (parent, child).
-
-    Notes
-    -----
-    - Lines starting with "#" or empty lines are ignored.
-    - The file is expected to have space-separated integers for parent-child
-      relationships.
-    - If the file ends without a header for a new tree, the last tree is
-      automatically added to the result.
-
-    Examples
-    --------
-    Given a file with the following content:
-
-    ```
-    # Example tree file
-    backbone tree 1
-    1 2
-    1 3
-    backbone tree 2
-    4 5
-    4 6
-    ```
-
-    Calling the function:
-
-    >>> read_tree_edges_sapling("example.txt")
-    [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]
-    """
-    trees = []
-    current_tree = []
-
-    with open(file_path, "r") as file:
-        for line in file:
-            line = line.strip()
-            if not line or line.startswith("#"):  # Skip empty lines and comments
-                continue
-
-            if line.startswith(header_prefix):  # New tree starts here
-                if current_tree:  # Store previous tree before starting a new one
-                    trees.append(current_tree)
-                    current_tree = []
-                continue
-
-            # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
-            if len(parts) == 2:
-                current_tree.append((int(parts[0]), int(parts[1])))
-
-    if current_tree:  # Append last tree if exists
-        trees.append(current_tree)
-
-    return trees
 
 
 def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rate=0.001):
@@ -282,6 +143,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
     return product, Cell_assignment
 
 
+
 def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
     """
     Rank SNV phylogenetic trees based on their likelihood given scDNA-seq read count data and calculate entropy for cell assignments.
@@ -328,12 +190,13 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
 
         # Extract actual node labels from the tree (not "Clone_X" format)
         clone_labels = Cell_assignment_df.columns.tolist()
+        assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(axis=1)
+       
         clone_labels = [f"clone_{x}_posterior" for x in clone_labels]
         Cell_assignment_df.columns = clone_labels
-        print(Cell_assignment_df.head())
+      
 
         # Assign each cell to the most probable clone
-        assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(axis=1)
         Cell_assignment_df["clone"] = assigned_clones
         Cell_assignment_df["tree"] = idx  # Use direct tree index (0, 1, …)
         Cell_assignment_df["likelihood"] = raw_probability
@@ -347,7 +210,6 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
 
     if verbose:
         print(f"Processed {len(tree_list)} trees.") 
-        print()
         print("Writing output to disk...")
 
     # Create a DataFrame of tree probabilities
@@ -400,6 +262,13 @@ def main():
 
     candidate_trees = read_trees(args.trees)
     ranked_trees, cell_assignments = rank_trees(candidate_trees, read_counts, alpha=args.alpha, topn= args.topn, verbose=args.verbose)
+
+    tree_idx = ranked_trees["tree"].tolist()[0]
+    if args.draw:
+        
+        best_tree = cell_assignments[cell_assignments["tree"] == tree_idx]
+        cell_assign = dict(zip(best_tree["cell"], best_tree["clone"]))
+        visualize_tree(candidate_trees[tree_idx], cell_assignment=cell_assign, output_file=args.draw)
 
     # Save results
     if args.ranking:

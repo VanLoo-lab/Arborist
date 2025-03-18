@@ -23,7 +23,8 @@ classifiers = [
 dependencies = [
     "numpy",
     "scipy",
-    "pandas"
+    "pandas",
+    "pygraphviz"
 ]
 
 [tool.setuptools.packages.find]
