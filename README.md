@@ -83,10 +83,12 @@ pip install .
 The input read counts file should be in CSV format or `panda.DataFrame` and contain the following columns:
 | Column | Description |
 |---------|------------|
-| `cell` | Unique identifier for the cell to which . |
-| `cluster` | Cluster ID to which the c belongs. |
-| `total` | Total number of reads. |
-| `alt` | Number of variant reads. |
+| `cell` | cell identifier |
+| `snv` | SNV id |
+| `total` | Total number of reads for cell and SNV |
+| `alt` | Number of variant reads for cell and SNV |
+| `cluster` | Cluster id to which the SNV belongs. |
+
 
 
 
