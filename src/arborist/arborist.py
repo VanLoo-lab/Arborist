@@ -9,7 +9,7 @@ from scipy.stats import entropy
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Tree ranking script")
-    parser.add_argument(
+    parser.add_argument("-R",
         "--read_counts", required=True, help="Path to read counts CSV file with columns 'cell', 'cluster', 'total', 'alt'"
     )
     parser.add_argument("-T", "--trees", required=True, help="Path to tree file")
@@ -17,7 +17,8 @@ def parse_arguments():
     parser.add_argument("--alpha", required=False, type=float, default=0.001, help="Per base sequencing error")
     parser.add_argument("--topn", required=False, type=int, default=25, help="Filter only the top n trees, default is 25.")
     parser.add_argument("--ranking", required=False, type=str, help="Path to where tree ranking output should be saved")
-    parser.add_argument("--cell_assign", required=False, type=str, help="Path to where cell assignments output should be saved")
+    parser.add_argument("--cell-assign", required=False, type=str, help="Path to where cell assignments output should be saved")
+    parser.add_argument("-v", "--verbose", help="Print verbose output", action="store_true")
 
     return parser.parse_args()
 
@@ -236,6 +237,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
         columns=["Child", "Ancestors"],
     )
 
+    #filter out any clusters that are not in the tree.
     filtered_read_counts = read_counts[
         read_counts["cluster"].isin(evolution_matrix["Child"])
     ]
@@ -280,7 +282,7 @@ def process_read_counts_and_calculate_probabilities(read_counts, tree, error_rat
     return product, Cell_assignment
 
 
-def rank_trees(tree_list, read_counts,alpha=0.001, topn=None):
+def rank_trees(tree_list, read_counts,alpha=0.001, topn=None, verbose=False):
     """
     Rank SNV phylogenetic trees based on their likelihood given scDNA-seq read count data and calculate entropy for cell assignments.
     This function processes a list of phylogenetic trees and their associated read counts to calculate
@@ -321,11 +323,14 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None):
     combined_outputs = []
 
     for idx, tree in enumerate(tree_list):
+        
         raw_probability, Cell_assignment_df = process_read_counts_and_calculate_probabilities(read_counts, tree, alpha)
 
         # Extract actual node labels from the tree (not "Clone_X" format)
         clone_labels = Cell_assignment_df.columns.tolist()
         clone_labels = [f"clone_{x}_posterior" for x in clone_labels]
+        Cell_assignment_df.columns = clone_labels
+        print(Cell_assignment_df.head())
 
         # Assign each cell to the most probable clone
         assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(axis=1)
@@ -335,6 +340,15 @@ def rank_trees(tree_list, read_counts,alpha=0.001, topn=None):
         combined_outputs.append(Cell_assignment_df.reset_index())
 
         tree_probabilities.append({"tree": idx, "likelihood": raw_probability})
+
+        if verbose:
+            print(f"Processed tree {idx} with likelihood {raw_probability}.")
+
+
+    if verbose:
+        print(f"Processed {len(tree_list)} trees.") 
+        print()
+        print("Writing output to disk...")
 
     # Create a DataFrame of tree probabilities
     df = pd.DataFrame(tree_probabilities)
@@ -385,7 +399,7 @@ def main():
 
 
     candidate_trees = read_trees(args.trees)
-    ranked_trees, cell_assignments = rank_trees(candidate_trees, read_counts, alpha=args.alpha, topn= args.topn)
+    ranked_trees, cell_assignments = rank_trees(candidate_trees, read_counts, alpha=args.alpha, topn= args.topn, verbose=args.verbose)
 
     # Save results
     if args.ranking:
