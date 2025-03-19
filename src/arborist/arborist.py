@@ -58,8 +58,25 @@ def parse_arguments():
 
     return parser.parse_args()
 
+def run():
+    raise NotImplementedError
+    #initialize snv clusters 
+    #create the tree 
+    prev_likelihood = np.inf
+    while True:
+        tree_like = cell_assign = find_cell_assignments()
+        tree_like, snv_clusters = find_snv_clusters()
 
-def process_read_counts_and_calculate_probabilities(
+        if np.abs(prev_likelihood - tree_like) <  0.01:
+            break
+    
+    return tree_like, cell_assign, snv_clusters
+
+
+def find_snv_clusters(read_counts, tree, cell_assignment):
+    raise NotImplementedError
+
+def find_cell_assignments(
     read_counts, tree, error_rate=0.001
 ):
     """
@@ -217,7 +234,7 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     for idx, tree in enumerate(tree_list):
 
         raw_probability, Cell_assignment_df = (
-            process_read_counts_and_calculate_probabilities(read_counts, tree, alpha)
+            find_cell_assignments(read_counts, tree, alpha)
         )
 
         # Extract actual node labels from the tree (not "Clone_X" format)
