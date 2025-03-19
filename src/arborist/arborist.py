@@ -73,11 +73,13 @@ def run():
     return tree_like, cell_assign, snv_clusters
 
 
+
+
 def find_snv_clusters(read_counts, tree, cell_assignment):
     raise NotImplementedError
 
 def find_cell_assignments(
-    read_counts, tree, error_rate=0.001
+    read_counts, genotype_matrix, error_rate=0.001
 ):
     """
     Processes read counts and calculates probabilities for cell-to-clone assignments
@@ -128,34 +130,16 @@ def find_cell_assignments(
     >>> print(Cell_assignment)
     """
 
-    child_to_parent = {child: parent for parent, child in tree}
-    all_clones = set(child_to_parent.keys()).union(set(child_to_parent.values()))
-
-    def get_ancestors(child):
-        ancestors = []
-        while child in child_to_parent:
-            ancestors.append(child)
-            child = child_to_parent[child]
-        ancestors.append(child)
-        return ",".join(map(str, ancestors[::-1]))
-
-    evolution_matrix = pd.DataFrame(
-        [
-            (clone, get_ancestors(clone) if clone in child_to_parent else str(clone))
-            for clone in all_clones
-        ],
-        columns=["Child", "Ancestors"],
-    )
 
     # filter out any clusters that are not in the tree.
     filtered_read_counts = read_counts[
-        read_counts["cluster"].isin(evolution_matrix["Child"])
+        read_counts["cluster"].isin(genotype_matrix["Child"])
     ]
     cell_reads = defaultdict(lambda: defaultdict(list))
     for _, row in filtered_read_counts.iterrows():
         cell_reads[row["cell"]][row["cluster"]].append((row["total"], row["alt"]))
 
-    clones = evolution_matrix["Child"].values
+    clones = genotype_matrix["Child"].values
     cells = list(cell_reads.keys())
     Cell_assignment = pd.DataFrame(index=cells, columns=clones, dtype=float)
 
@@ -167,8 +151,8 @@ def find_cell_assignments(
         reads = cell_reads[cell]
 
         for clone_idx, clone in enumerate(clones):
-            ancestor_value = evolution_matrix.loc[
-                evolution_matrix["Child"] == clone, "Ancestors"
+            ancestor_value = genotype_matrix.loc[
+                genotype_matrix["Child"] == clone, "Ancestors"
             ].values[0]
             cluster_numbers = set(map(int, ancestor_value.split(",")))
 
@@ -191,6 +175,26 @@ def find_cell_assignments(
     product = np.sum(Cell_assignment.max(axis=1))
     return product, Cell_assignment
 
+def build_genotypes(tree):
+    child_to_parent = {child: parent for parent, child in tree}
+    all_clones = set(child_to_parent.keys()).union(set(child_to_parent.values()))
+
+    def get_ancestors(child):
+        ancestors = []
+        while child in child_to_parent:
+            ancestors.append(child)
+            child = child_to_parent[child]
+        ancestors.append(child)
+        return ",".join(map(str, ancestors[::-1]))
+
+    evolution_matrix = pd.DataFrame(
+        [
+            (clone, get_ancestors(clone) if clone in child_to_parent else str(clone))
+            for clone in all_clones
+        ],
+        columns=["Child", "Ancestors"],
+    )
+    return evolution_matrix
 
 def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     """
@@ -232,9 +236,9 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     combined_outputs = []
 
     for idx, tree in enumerate(tree_list):
-
+        genotype_matrix = build_genotypes(tree)
         raw_probability, Cell_assignment_df = (
-            find_cell_assignments(read_counts, tree, alpha)
+            find_cell_assignments(read_counts, genotype_matrix, alpha)
         )
 
         # Extract actual node labels from the tree (not "Clone_X" format)
