@@ -232,7 +232,10 @@ def visualize_tree(tree, cell_assignment=None, output_file=None):
         The path to save the visualization. If not provided, the visualization
         will be displayed on the screen.        "
     """
-    labels = {n: str(n) for n in tree}
+    labels = defaultdict(str)
+    for parent, child in tree:
+        labels[parent] = str(parent)
+        labels[child] = str(child)
     if cell_assignment:
         cell_mapping = defaultdict(list)
         for node, cell in cell_assignment.items():

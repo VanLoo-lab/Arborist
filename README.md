@@ -60,19 +60,31 @@ The script requires the following Python libraries:
 
 ## Installation
 
-Clone the repository from github.
+
+Clone the respository and `sim-it` as a submodule (recommended). This will also clone the Sim-it repository.
+Install packages locally. Note: dependencies will be installed automatically via pip.
+
+```bash
+git clone --recurse-submodules git@github.com:VanLoo-lab/Arborist.git
+cd Arborist
+pip install .
+cd simulator
+pip install .
+```
+
+
+Alternatively, just clone and install the Arborist repository from github.
 
 ```bash
 git clone https://github.com/VanLoo-lab/Arborist.git
 cd Arborist
-
-```
-
-Install package locally. Note: dependencie will be installed automatically via pip.
-
-```bash
 pip install .
+
 ```
+
+
+
+
 
 
 ## I/O Data Formats
