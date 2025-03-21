@@ -200,7 +200,7 @@ options:
 Run `arborist` on a set of candidate trees.
 ```python
 import pandas as pd 
-from arborist import rank_trees
+from arborist.arborist import rank_trees
 from arborist.utils. import read_tree_edges_conipher
 
 trees = read_tree_edges_conipher("my_conipher_file.txt")
