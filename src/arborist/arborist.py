@@ -9,7 +9,7 @@ import pygraphviz as pgv
 from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tree ranking script")
     parser.add_argument(
         "-R",
@@ -50,6 +50,12 @@ def parse_arguments():
         help="Path to where cell assignments output should be saved",
     )
     parser.add_argument(
+        "--snv-assign",
+        required=False,
+        type=str,
+        help="Path to where snv assignments output should be saved",
+    )
+    parser.add_argument(
         "-v", "--verbose", help="Print verbose output", action="store_true"
     )
     parser.add_argument(
@@ -58,29 +64,219 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def run():
-    raise NotImplementedError
-    #initialize snv clusters 
-    #create the tree 
-    prev_likelihood = np.inf
+def run(tree: list,
+        read_counts: pd.DataFrame,
+        error_rate: float=0.001,
+        verbose: bool=False,
+        max_iter: int=10,
+        min_rate: float=0.01,
+        tree_idx=None) -> tuple:
+    """
+    Iteratively processes read counts and calculates probabilities for cell-to-clone assignments 
+    and SNV assignments based on a given evolutionary tree and error rate to get the overall tree likelihood.
+
+    Parameters
+    ----------
+    tree : list of tuple
+        A list of tuples representing the evolutionary tree. Each tuple is of the form
+        (parent, child), where `parent` and `child` are cluster identifiers.
+    read_counts : pandas.DataFrame
+        A DataFrame containing read count data with the following columns:
+        - 'cell': Identifier for the cell.
+        - 'cluster': Identifier for the cluster (clone).
+        - 'total': Total number of reads.
+        - 'alt': Number of alternate reads.
+    error_rate : float, optional
+        The sequencing error rate, by default 0.001.
+    verbose : bool, optional
+        If True, print detailed information during processing, by default False.
+    max_iter : int, optional
+        Maximum number of iterations for the optimization loop, by default 10.
+    min_rate : float, optional
+        Minimum rate of change for convergence, by default 0.01.
+    tree_idx : int, optional
+        Index of the current tree being processed, by default None.
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - product : float
+            The sum of the maximum log-likelihoods for each cell.
+        - Cell_assignment : pandas.DataFrame
+            A DataFrame where rows correspond to cells and columns correspond to clones.
+            Each entry represents the log-likelihood of the cell being assigned to the clone.
+        - snv_assignments : pandas.DataFrame
+            A DataFrame where rows correspond to SNVs and columns correspond to clusters.
+            Each entry represents the log-likelihood of the SNV being assigned to the cluster.
+    """
+ 
+    # store best results
+    best_assignments = None
+    best_likelihood = -np.inf
+    best_snv_assignments = None
+    best_snv_likelihood = -np.inf
+
+    descendants_matrix = get_descendants_matrix(tree)
+    genotype_matrix = build_genotypes(tree)
+
+    # initialize first assignments 
+    first_pass_likelihood, first_pass_full_cell_assignments = find_cell_assignments(read_counts, genotype_matrix, error_rate)
+    cell_assignments = first_pass_full_cell_assignments.select_dtypes(include=[np.number]).idxmax(axis=1)
+    first_pass_snv_likelihood, first_pass_full_snv_assignments = find_snv_clusters(read_counts, descendants_matrix, cell_assignments, error_rate)
+
+    full_snv_assignments = first_pass_full_snv_assignments
+    prev_snv_likelihood = first_pass_snv_likelihood
+    full_cell_assignments = first_pass_full_cell_assignments
+    prev_cell_likelihood = first_pass_likelihood
+
+    print(f"Initial likelihood for tree {tree_idx}: {first_pass_likelihood}", end = "\r", flush=True)
+
+    # TODO: save highest likelihood cluster values
+    # possible maybe hold either snv or cell when plateau is reached but continue to update the other
+    # or only cell likelihood matters
+    # more likely some other kind of optimization algorithm
+    i = 0
     while True:
-        tree_like = cell_assign = find_cell_assignments()
-        tree_like, snv_clusters = find_snv_clusters()
-
-        if np.abs(prev_likelihood - tree_like) <  0.01:
+        if max_iter is not None and i >= max_iter:
             break
+        
+        cell_prod, full_cell_assignments = find_cell_assignments(read_counts, genotype_matrix, error_rate, full_snv_assignments)
+
+        cell_assignments = full_cell_assignments.select_dtypes(include=[np.number]).idxmax(axis=1)
+        snv_prod, full_snv_assignments = find_snv_clusters(read_counts, descendants_matrix, cell_assignments, error_rate)
+
+        if verbose:
+            if max_iter is not None: 
+                print(f"Iteration: {i}/{max_iter} for tree {tree_idx}. Likelihood: {cell_prod}", end = "\r", flush=True)
+            else:
+                print(f"Iteration: {i} for tree {tree_idx}. Likelihood: {cell_prod}", end = "\r", flush=True)
+
+        # store results of best likelihood
+        if cell_prod > best_likelihood:
+            best_likelihood = cell_prod
+            best_assignments = full_cell_assignments
+            best_snv_assignments = full_snv_assignments
+            best_snv_likelihood = snv_prod
+
+        # likelihood plateau defined by minimum rate of change 
+        if (np.abs((prev_cell_likelihood - cell_prod)/prev_cell_likelihood) <=  min_rate) and \
+            (np.abs((prev_snv_likelihood - snv_prod)/prev_snv_likelihood) <=  min_rate):
+            break
+        else:
+            prev_cell_likelihood = cell_prod
+            prev_snv_likelihood = snv_prod
+
+        i += 1
+
+    return best_likelihood, best_assignments, best_snv_assignments, best_snv_likelihood
+
+
+def find_snv_clusters(read_counts: pd.DataFrame, 
+                      genotype_matrix: pd.DataFrame,
+                      cell_assignment: pd.Series,
+                      error_rate: float=0.001,
+                      ) -> tuple:
+    """
+    Processes read counts and calculates probabilities for SNV assignments
+    based on a given evolutionary tree and error rate.
+
+    Parameters
+    ----------
+    read_counts : pandas.DataFrame
+        A DataFrame containing read count data with the following columns:
+        - 'cell': Identifier for the cell.
+        - 'cluster': Identifier for the cluster (clone).
+        - 'total': Total number of reads.
+        - 'alt': Number of alternate reads.
+    genotype_matrix : pandas.DataFrame
+        A DataFrame representing the evolutionary tree with the following columns:
+        - 'Child': Identifier for the child node (cluster).
+        - 'descendants': Descendent clusters for each child.
+    cell_assignment : pandas.DataFrame
+        A Series containing cell assignments with cell number as index and assigned clone as values.
+    error_rate : float, optional
+        The sequencing error rate, by default 0.001.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - product : float
+            The sum of the maximum log-likelihoods for each SNV.
+        - full_snv_assignment : pandas.DataFrame
+            A DataFrame where rows correspond to SNVs and columns correspond to clones.
+            Each entry represents the log-likelihood of the SNV being assigned to the clone.
+    """
+    # filter out any clusters that are not in the tree.
+    filtered_read_counts = read_counts[
+        read_counts["cluster"].isin(genotype_matrix["Child"])
+    ]
+    # get most likely clone for each cell and assign
+    # TODO: Use closest node to the root to break ties. will likely require its own function
     
-    return tree_like, cell_assign, snv_clusters
+    filtered_read_counts = pd.merge(
+        filtered_read_counts,
+        cell_assignment.reset_index().rename(columns={"index":"cell", 0: "assigned_clone"}), 
+        on = "cell", how = "left"
+    )
+    
+    snv_reads = defaultdict(lambda: defaultdict(list))
+    for _, row in filtered_read_counts.iterrows():
+        snv_reads[row["snv"]][row["assigned_clone"]].append((row["total"], row["alt"]))
 
+    clones = genotype_matrix["Child"].values
+    snvs = list(snv_reads.keys())
+    full_snv_assignment = pd.DataFrame(index=snvs, columns=clones, dtype=float)
 
+    p_mutated = 0.5 - error_rate + 0.5 * error_rate / 3
+    p_not_mutated = error_rate / 3
 
+    for snv in snvs:
+        log_likelihoods = np.zeros(len(clones))
+        reads = snv_reads[snv]
+        for clone_idx, clone in enumerate(clones):
+            descendants_value = genotype_matrix.loc[
+                genotype_matrix["Child"] == clone, "Descendants"
+            ].values[0]
+            descendent_clusters = set()
+            if isinstance(descendants_value, list):
+                descendent_clusters.update(descendants_value)
+            else:
+                descendent_clusters.add(descendants_value)
 
-def find_snv_clusters(read_counts, tree, cell_assignment):
-    raise NotImplementedError
+            # get all cell assignments for the snv
+            # gather all reads for all descendants 
+            descendent_reads = [reads[int(key)] for key in descendent_clusters]
+            descendent_reads = sum(descendent_reads, [])
+            if not descendent_reads:
+                descendent_reads_total = np.array([0, 0], dtype=int)
+            else:
+                descendent_reads_total = np.array(descendent_reads, dtype=int).sum(axis=0)
 
-def find_cell_assignments(
-    read_counts, genotype_matrix, error_rate=0.001
-):
+            log_likelihood_descendants = binom.logpmf(descendent_reads_total[1], descendent_reads_total[0], p_mutated)
+
+            # get all reads for all non descendants
+            nondescendent_reads = [reads[int(key)] for key in reads.keys() if key not in descendent_clusters]
+            nondescendent_reads = sum(nondescendent_reads, [])
+            if not nondescendent_reads:
+                nondescendent_reads_total = np.array([0, 0], dtype=int)
+            else:
+                nondescendent_reads_total = np.array(nondescendent_reads, dtype=int).sum(axis=0)
+                
+            log_likelihood_nondescendants = binom.logpmf(nondescendent_reads_total[1], nondescendent_reads_total[0], p_not_mutated)
+
+            # combine?
+            log_likelihoods[clone_idx] = log_likelihood_descendants + log_likelihood_nondescendants
+
+        full_snv_assignment.loc[snv, :] = log_likelihoods
+
+    product = np.sum(full_snv_assignment.max(axis=1))
+    return product, full_snv_assignment     
+
+def find_cell_assignments(read_counts: pd.DataFrame,
+                          genotype_matrix: pd.DataFrame,
+                          error_rate: float=0.001,
+                          full_snv_assignment=None) -> tuple:
     """
     Processes read counts and calculates probabilities for cell-to-clone assignments
     based on a given evolutionary tree and error rate.
@@ -135,6 +331,15 @@ def find_cell_assignments(
     filtered_read_counts = read_counts[
         read_counts["cluster"].isin(genotype_matrix["Child"])
     ]
+    # take SNV clusters from read counts for initialization.
+    if full_snv_assignment is not None:
+        snv_clusters = full_snv_assignment.select_dtypes(include=[np.number]).idxmax(axis=1)
+        filtered_read_counts = pd.merge(
+            filtered_read_counts.drop(columns=["cluster"]),
+            snv_clusters.reset_index().rename(columns={"index":"snv", 0: "cluster"}), 
+            on = "snv", how = "left"
+        )
+
     cell_reads = defaultdict(lambda: defaultdict(list))
     for _, row in filtered_read_counts.iterrows():
         cell_reads[row["cell"]][row["cluster"]].append((row["total"], row["alt"]))
@@ -175,7 +380,7 @@ def find_cell_assignments(
     product = np.sum(Cell_assignment.max(axis=1))
     return product, Cell_assignment
 
-def build_genotypes(tree):
+def build_genotypes(tree: list) -> pd.DataFrame:
     child_to_parent = {child: parent for parent, child in tree}
     all_clones = set(child_to_parent.keys()).union(set(child_to_parent.values()))
 
@@ -196,7 +401,39 @@ def build_genotypes(tree):
     )
     return evolution_matrix
 
-def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
+def get_descendants_matrix(tree: list) -> pd.DataFrame:
+    parent_to_child = defaultdict(list)
+    for parent, child in tree:
+        parent_to_child[parent].append(child)
+    # Flattens the list
+    all_clones = set(parent_to_child.keys()).union(set(sum(parent_to_child.values(), [])))
+
+    def dfs_recursive(node, tree, visited=None):
+        if visited is None:
+            visited = []  
+        if node in visited:
+            return visited  
+        visited.append(node)  
+        for child in tree.get(node, []):  
+            dfs_recursive(child, tree, visited)  # Recursively visit children
+        return visited  
+
+    evolution_matrix = pd.DataFrame(
+        [
+            (clone, dfs_recursive(clone, parent_to_child) if clone in parent_to_child else int(clone))
+            for clone in all_clones
+        ],
+        columns=["Child", "Descendants"],
+    )
+    return evolution_matrix
+
+def rank_trees(tree_list: list, 
+               read_counts: pd.DataFrame, 
+               alpha: float=0.001, 
+               topn: int=None, 
+               max_iter: int=10,
+               min_rate: float=0.01,
+               verbose: bool=False) -> tuple:
     """
     Rank SNV phylogenetic trees based on their likelihood given scDNA-seq read count data and calculate entropy for cell assignments.
     This function processes a list of phylogenetic trees and their associated read counts to calculate
@@ -234,15 +471,33 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
 
     tree_probabilities = []
     combined_outputs = []
+    combined_snv_outputs = []
 
     for idx, tree in enumerate(tree_list):
-        genotype_matrix = build_genotypes(tree)
+
+        """
+        # Main function to find cell assignments
         raw_probability, Cell_assignment_df = (
+            run(genotype_matrix, read_counts, alpha, verbose)
             find_cell_assignments(read_counts, genotype_matrix, alpha)
         )
+        """
+
+        raw_probability, Cell_assignment_df, snv_assignments_df, snv_raw_probability = (
+            run(tree = tree, 
+                read_counts = read_counts, 
+                error_rate = alpha, 
+                verbose = verbose,
+                max_iter = max_iter,
+                min_rate = min_rate,
+                tree_idx = idx)
+        )
+        
+        # Format cell assignments
 
         # Extract actual node labels from the tree (not "Clone_X" format)
         clone_labels = Cell_assignment_df.columns.tolist()
+        # TODO: Assign cells to closet node to the root
         assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(
             axis=1
         )
@@ -260,6 +515,24 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
 
         if verbose:
             print(f"Processed tree {idx} with likelihood {raw_probability}.")
+
+        # Format snv assignments
+
+        # Extract actual node labels from the tree (not "Clone_X" format)
+        snv_clusters = snv_assignments_df.columns.tolist()
+        # TODO: Assign cells to closet node to the root
+        assigned_snv_clusters = snv_assignments_df.select_dtypes(include=[np.number]).idxmax(
+            axis=1
+        )
+
+        cluster_labels = [f"cluster_{x}_posterior" for x in snv_clusters]
+        snv_assignments_df.columns = cluster_labels
+
+        # Assign each snv to the most probable cluster
+        snv_assignments_df["cluster"] = assigned_snv_clusters
+        snv_assignments_df["tree"] = idx
+        snv_assignments_df["snv_likelihood"] = snv_raw_probability
+        combined_snv_outputs.append(snv_assignments_df.reset_index())
 
     if verbose:
         print(f"Processed {len(tree_list)} trees.")
@@ -307,7 +580,12 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     posterior_probs.columns = clone_labels
     cell_assignments = pd.concat([cell_assignments, posterior_probs], axis=1)
 
-    return ranked_trees, cell_assignments
+    snv_assignments = pd.concat(combined_snv_outputs, ignore_index=True)
+    snv_assignments.rename(columns={"Index": "snv"}, inplace=True)
+
+    # return ranked_trees, cell_assignments #, snv_assignments
+    return ranked_trees, cell_assignments, snv_assignments
+
 
 
 def main():
@@ -320,7 +598,8 @@ def main():
         read_trees = read_tree_edges_sapling
 
     candidate_trees = read_trees(args.trees)
-    ranked_trees, cell_assignments = rank_trees(
+
+    ranked_trees, cell_assignments, snv_assignments = rank_trees(
         candidate_trees,
         read_counts,
         alpha=args.alpha,
@@ -344,3 +623,5 @@ def main():
         ranked_trees.to_csv(args.ranking, index=False)
     if args.cell_assign:
         cell_assignments.to_csv(args.cell_assign, index=False)
+    if args.snv_assign:
+        snv_assignments.to_csv(args.snv_assign, index=False)
