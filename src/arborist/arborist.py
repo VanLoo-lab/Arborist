@@ -129,7 +129,8 @@ def run(tree: list,
     full_cell_assignments = first_pass_full_cell_assignments
     prev_cell_likelihood = first_pass_likelihood
 
-    print(f"Initial likelihood for tree {tree_idx}: {first_pass_likelihood}", end = "\r", flush=True)
+    if verbose:
+        print(f"Initial likelihood for tree {tree_idx}: {first_pass_likelihood}", end = "\r", flush=True)
 
     # TODO: save highest likelihood cluster values
     # possible maybe hold either snv or cell when plateau is reached but continue to update the other
