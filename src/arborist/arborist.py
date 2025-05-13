@@ -209,32 +209,31 @@ def find_snv_clusters(read_counts: pd.DataFrame,
             Each entry represents the log-likelihood of the SNV being assigned to the clone.
     """
     # filter out any clusters that are not in the tree.
-    filtered_read_counts = read_counts[
-        read_counts["cluster"].isin(genotype_matrix["Child"])
-    ]
+    # filtered_read_counts = read_counts[
+    #     read_counts["cluster"].isin(genotype_matrix["Child"])
+    # ]
     # get most likely clone for each cell and assign
     # TODO: Use closest node to the root to break ties. will likely require its own function
     
     filtered_read_counts = pd.merge(
-        filtered_read_counts,
+        read_counts,
         cell_assignment.reset_index().rename(columns={"index":"cell", 0: "assigned_clone"}), 
         on = "cell", how = "left"
     )
+    filtered_read_counts = filtered_read_counts.dropna(subset=["assigned_clone"])
     
-    snv_reads = defaultdict(lambda: defaultdict(list))
-    for _, row in filtered_read_counts.iterrows():
-        snv_reads[row["snv"]][row["assigned_clone"]].append((row["total"], row["alt"]))
-
     clones = genotype_matrix["Child"].values
-    snvs = list(snv_reads.keys())
+    snvs = filtered_read_counts["snv"].unique()
+
     full_snv_assignment = pd.DataFrame(index=snvs, columns=clones, dtype=float)
 
     p_mutated = 0.5 - error_rate + 0.5 * error_rate / 3
     p_not_mutated = error_rate / 3
 
     for snv in snvs:
-        log_likelihoods = np.zeros(len(clones))
-        reads = snv_reads[snv]
+        snv_log_likelihoods = np.zeros(len(clones))
+        reads = filtered_read_counts.loc[filtered_read_counts["snv"] == snv]
+
         for clone_idx, clone in enumerate(clones):
             descendants_value = genotype_matrix.loc[
                 genotype_matrix["Child"] == clone, "Descendants"
@@ -245,31 +244,19 @@ def find_snv_clusters(read_counts: pd.DataFrame,
             else:
                 descendent_clusters.add(descendants_value)
 
-            # get all cell assignments for the snv
-            # gather all reads for all descendants 
-            descendent_reads = [reads[int(key)] for key in descendent_clusters]
-            descendent_reads = sum(descendent_reads, [])
-            if not descendent_reads:
-                descendent_reads_total = np.array([0, 0], dtype=int)
-            else:
-                descendent_reads_total = np.array(descendent_reads, dtype=int).sum(axis=0)
+            total_reads_arr, variant_reads_arr, p_arrs = [], [], []
 
-            log_likelihood_descendants = binom.logpmf(descendent_reads_total[1], descendent_reads_total[0], p_mutated)
+            snv_reads_arr = np.array(reads.loc[:,['alt','total','assigned_clone']], dtype=int)
+            p_arrs = [p_mutated if int(x) in descendent_clusters else p_not_mutated for x in snv_reads_arr[:,2].astype(int)]
+            total_reads_arr = snv_reads_arr[:, 1]
+            variant_reads_arr = snv_reads_arr[:, 0]
 
-            # get all reads for all non descendants
-            nondescendent_reads = [reads[int(key)] for key in reads.keys() if key not in descendent_clusters]
-            nondescendent_reads = sum(nondescendent_reads, [])
-            if not nondescendent_reads:
-                nondescendent_reads_total = np.array([0, 0], dtype=int)
-            else:
-                nondescendent_reads_total = np.array(nondescendent_reads, dtype=int).sum(axis=0)
-                
-            log_likelihood_nondescendants = binom.logpmf(nondescendent_reads_total[1], nondescendent_reads_total[0], p_not_mutated)
+            if total_reads_arr is not None:
+                probs = binom.pmf(variant_reads_arr, total_reads_arr, p_arrs)
+                snv_log_likelihoods[clone_idx] = sum(np.log(probs))
 
-            # combine?
-            log_likelihoods[clone_idx] = log_likelihood_descendants + log_likelihood_nondescendants
 
-        full_snv_assignment.loc[snv, :] = log_likelihoods
+        full_snv_assignment.loc[snv, :] = snv_log_likelihoods
 
     product = np.sum(full_snv_assignment.max(axis=1))
     return product, full_snv_assignment     
