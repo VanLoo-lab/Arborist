@@ -4,8 +4,6 @@ import numpy as np
 from scipy.stats import binom
 from scipy.special import logsumexp
 from collections import defaultdict
-from scipy.stats import entropy
-import pygraphviz as pgv
 from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
 from scipy.special import softmax
 import itertools
@@ -110,7 +108,7 @@ def initialize_q_y(read_counts: pd.DataFrame,clones: list) -> dict:
     for snv in read_counts["snv"].unique():
         q_y[snv] = {}
         for p in clones:
-            q_y[snv][p] = 1.0 if cluster[snv] ==p else 0.0
+            q_y[snv][p] = 0.99 if cluster[snv] == p else 0.01 / (len(clones) - 1)
     return q_y
 
     
@@ -216,7 +214,7 @@ def run(tree: list,
 
     genotype_matrix = get_descendants_matrix(tree)
     clones = genotype_matrix["clone"].unique()
-    print(genotype_matrix)
+
     presence = enumerate_presence(genotype_matrix, clones)
   
 
@@ -237,8 +235,6 @@ def run(tree: list,
     # initialize SNV posterior
     q_y = initialize_q_y(filtered_read_counts, clones)
 
-
-    best_likelihood = -np.inf
     for it in range(max_iter):
 
         q_z = compute_q_z(cell_snv_groups, presence, clones, q_y,  snvs_per_cell)
