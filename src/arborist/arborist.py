@@ -1,19 +1,151 @@
 import argparse
 import pandas as pd
 import numpy as np
+import numba
+from numba import njit, prange
 from scipy.stats import binom
-from scipy.special import logsumexp
 from collections import defaultdict
 from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
 from scipy.special import softmax
-import itertools
 from .treefit import TreeFit
 
-import numpba 
+
+numba.set_num_threads(10)
 
 
-@numba.jit(nopython=True)
-def compute_q_z_numba(cell_like_dict:dict, q_y:dict, clones:list):
+
+@njit
+def logsumexp_inline(log_terms, n):
+    max_log = -np.inf
+    for i in range(n):
+        if log_terms[i] > max_log:
+            max_log = log_terms[i]
+    sum_exp = 0.0
+    for i in range(n):
+        sum_exp += np.exp(log_terms[i] - max_log)
+    return max_log + np.log(sum_exp)
+
+@njit(parallel=True, cache=True)
+def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones):
+    q_z = np.zeros((n_cells, n_clones))
+
+    for i in prange(n_cells):
+        for r in range(n_clones):
+            acc = 0.0
+            for k in range(cell_ptr[i], cell_ptr[i + 1]):
+                log_present = log_likes[2 * k]
+                log_absent = log_likes[2 * k + 1]
+                j = snv_idx[k]
+
+                log_terms = np.empty(n_clones)
+                for p in range(n_clones):
+                    log_prob = log_present * presence[p, r] + log_absent * (1 - presence[p, r])
+                    log_terms[p] = log_q_y[j, p] + log_prob
+
+                acc += logsumexp_inline(log_terms, n_clones)
+
+            q_z[i, r] = acc
+
+        # Normalize to softmax
+        max_log = np.max(q_z[i])
+        q_z[i] = np.exp(q_z[i] - max_log)
+        q_z[i] /= np.sum(q_z[i])
+
+    return q_z
+
+@njit 
+def log_array(arr):
+    log_arr = np.full_like(arr, -np.inf)
+    for j in range(arr.shape[0]):
+        for p in range(arr.shape[1]):
+            if arr[j, p] > 0.0:
+                log_arr[j, p] = np.log(arr[j, p])
+    return log_arr
+
+@njit(parallel=True, cache=True)
+def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones):
+    q_y = np.zeros((n_snvs, n_clones))
+
+    for j in prange(n_snvs):
+        for p in range(n_clones):
+            acc = 0.0
+            for k in range(snv_ptr[j], snv_ptr[j+1]):
+                log_present = log_likes[2 * k]
+                log_absent = log_likes[2 * k + 1]
+                i = cell_idx[k]
+                # Build log-sum-exp terms for this (i, j) pair
+                log_terms = np.empty(n_clones)
+                for r in range(n_clones):
+                
+                        log_prob = log_present * presence[p, r] + log_absent * (1 - presence[p, r])
+                        log_terms[r] = log_q_z[i,r] + log_prob
+                   
+
+     
+                acc += logsumexp_inline(log_terms, n_clones)
+
+            q_y[j, p] = acc
+
+        # Normalize to softmax
+        max_log = np.max(q_y[j])
+        q_y[j] = np.exp(q_y[j] - max_log)
+        q_y[j] /= np.sum(q_y[j])
+
+    return q_y
+
+@njit
+def compute_likelihood_sparse(cell_idx, snv_idx, log_likes, log_q_y, loq_q_z, presence, n_clones):
+
+    expected_log_likelihood = 0.0
+    for k in range(len(cell_idx)):
+        i = cell_idx[k]
+        j = snv_idx[k]
+        log_present = log_likes[2 * k]
+        log_absent = log_likes[2 * k + 1]
+
+        for r in range(n_clones):
+            for p in range(n_clones):
+    
+                    log_w = loq_q_z[i, r] + log_q_y[j, p]
+                    log_prob = log_present * presence[p, r] + log_absent * (1 - presence[p, r])
+                    expected_log_likelihood += np.exp(log_w) * log_prob
+
+    return expected_log_likelihood 
+
+
+def build_index_pointers(index_array, n):
+    """
+    Builds a pointer array such that data[ptr[i]:ptr[i+1]] gives all entries for index i.
+    Returns: pointer array and sorted index array
+    """
+    counts = np.zeros(n + 1, dtype=np.int32)
+    for idx in index_array:
+        counts[idx + 1] += 1
+    for i in range(1, n + 1):
+        counts[i] += counts[i - 1]
+    sort_idx = np.argsort(index_array)
+    return counts, sort_idx
+
+
+def build_sparse_input(df, cell_to_idx, snv_to_idx):
+    """
+    Converts (cell, snv) log likelihood DataFrame into sparse COO-style NumPy arrays.
+    Returns: (cell_idx, snv_idx, log_matrix) where log_matrix[:, 0] = log_present, log_matrix[:, 1] = log_absent
+    """
+    n = df.shape[0]
+    cell_idx = np.zeros(n, dtype=np.int32)
+    snv_idx = np.zeros(n, dtype=np.int32)
+    log_matrix = np.zeros(2 * n, dtype=np.float64)
+
+    for i, row in enumerate(df.itertuples(index=False)):
+            cell_idx[i] = cell_to_idx[row.cell]
+            snv_idx[i] = snv_to_idx[row.snv]
+            log_matrix[2 * i] = row.log_present
+            log_matrix[2 * i + 1] = row.log_absent
+
+    return cell_idx, snv_idx, log_matrix
+
+
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -87,37 +219,41 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def enumerate_presence(genotype_matrix: pd.DataFrame, clones: list) -> dict:
+def enumerate_presence(genotype_matrix: pd.DataFrame, clones: list) -> np.array:
     """
     Enumerates the presence of each clone in the genotype matrix.
     """
-
-    presence = {}
-
-    for p,r in itertools.product(clones, clones):
-   
-        # check if p is an ancestor of r
-        p_descendant_set = genotype_matrix.loc[
-            genotype_matrix["clone"] == p, "descendants"
-        ].values[0]
-     
-        if r in p_descendant_set:
-            presence[(p,r)] = True
-        else:
-            presence[(p,r)] = False
+    n_clones =len(clones)
+    presence = np.zeros((n_clones, n_clones), dtype=int)
+ 
+    for p in range(n_clones):
+        clone_p = clones[p]
+        for r in range(n_clones):
+       
+            clone_r = clones[r]
+            # check if p is an ancestor of r
+            p_descendant_set = genotype_matrix.loc[
+                genotype_matrix["clone"] == clone_p, "descendants"
+            ].values[0]
+        
+            if clone_r in p_descendant_set:
+                presence[p,r] = 1
+            else:
+                presence[p,r] = 0
     return presence
 
-def initialize_q_y(read_counts: pd.DataFrame,clones: list) -> dict:
+def initialize_q_y(read_counts: pd.DataFrame,clones: list, snv_to_idx:dict) -> dict:
     """
     Initializes q(y_j = p) for each SNV j and clone p based on cluster assignment:
     """
 
-    q_y = {}
+  
     cluster = dict(zip(read_counts["snv"], read_counts["cluster"]))
-    for snv in read_counts["snv"].unique():
-        q_y[snv] = {}
-        for p in clones:
-            q_y[snv][p] = 0.99 if cluster[snv] == p else 0.01 / (len(clones) - 1)
+    q_y = np.zeros((len(cluster), len(clones)), dtype=np.float64)
+    for snv in cluster:
+        j = snv_to_idx[snv]
+        for p, clone_p in enumerate(clones):
+            q_y[j,p]= 0.99 if cluster[snv] == clone_p else 0.01 / (len(clones) - 1)
     return q_y
 
     
@@ -164,250 +300,55 @@ def compute_likelihood(cell_snv_groups: dict, snvs_per_cell: dict, q_y: dict, q_
 
               
 
-
-def run(tree: list,
-        read_counts: pd.DataFrame,
-        max_iter: int=10,
-        tolerance = 1,
-        verbose: bool=False,
-        ) -> tuple:
-    """
-    Iteratively processes read counts and calculates probabilities for cell-to-clone assignments 
-    and SNV assignments based on a given evolutionary tree and error rate to get the overall tree likelihood.
-
-    Parameters
-    ----------
-    tree : list of tuple
-        A list of tuples representing the evolutionary tree. Each tuple is of the form
-        (parent, child), where `parent` and `child` are cluster identifiers.
-    read_counts : pandas.DataFrame
-        A DataFrame containing read count data with the following columns:
-        - 'cell': Identifier for the cell.
-        - 'cluster': Identifier for the cluster (clone).
-        - 'total': Total number of reads.
-        - 'alt': Number of alternate reads.
-    error_rate : float, optional
-        The sequencing error rate, by default 0.001.
-    verbose : bool, optional
-        If True, print detailed information during processing, by default False.
-    max_iter : int, optional
-        Maximum number of iterations for the optimization loop, by default 10.
-    min_rate : float, optional
-        Minimum rate of change for convergence, by default 0.01.
-    tree_idx : int, optional
-        Index of the current tree being processed, by default None.
-    Returns
-    -------
-    tuple
-        A tuple containing:
-        - product : float
-            The sum of the maximum log-likelihoods for each cell.
-        - Cell_assignment : pandas.DataFrame
-            A DataFrame where rows correspond to cells and columns correspond to clones.
-            Each entry represents the log-likelihood of the cell being assigned to the clone.
-        - snv_assignments : pandas.DataFrame
-            A DataFrame where rows correspond to SNVs and columns correspond to clusters.
-            Each entry represents the log-likelihood of the SNV being assigned to the cluster.
-    """
- 
-    # store best results
+@njit
+def run(presence: np.ndarray,
+        log_like_matrix: np.ndarray,
+        cell_idx: np.ndarray,
+        snv_idx: np.ndarray,
+        n_cells: int,
+        n_snvs: int,
+        n_clones: int,
+        q_y: np.ndarray,
+        cell_ptr: np.ndarray,
+        snv_ptr: np.ndarray,
+        max_iter=10,
+        tolerance=1,
+        verbose=False):
 
     best_likelihood = -np.inf
-    best_q_z = None
-    best_q_y = None
+    best_q_z = np.zeros((n_cells, n_clones))
+    best_q_y = np.zeros((n_snvs, n_clones))
     converged = False
 
-    genotype_matrix = get_descendants_matrix(tree)
-    clones = genotype_matrix["clone"].unique()
-
-    presence = enumerate_presence(genotype_matrix, clones)
-  
-
-    filtered_read_counts = read_counts[
-        read_counts["cluster"].isin(clones)
-    ]
-
-    # Pre-group by (cell, snv) to avoid repeated filtering
-    cell_snv_groups = {(row["cell"], row["snv"]): row for _, row in filtered_read_counts.iterrows()}
-    snvs_per_cell = defaultdict(set)
-    for cell, snv in cell_snv_groups.keys():
-        snvs_per_cell[cell].add(snv)
-    cells_per_snv = defaultdict(set)
-    for cell, snv in cell_snv_groups.keys():
-        cells_per_snv[snv].add(cell)
-
-    if verbose:
-        print(f"Running Arborist on tree {tree}")
-
-    # initialize SNV posterior
-    q_y = initialize_q_y(filtered_read_counts, clones)
-
     for it in range(max_iter):
+        log_q_y = log_array(q_y)
+        q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix, log_q_y, presence, n_cells, n_clones)
+        log_q_z = log_array(q_z)
 
-        q_z = compute_q_z(cell_snv_groups, presence, clones, q_y,  snvs_per_cell)
-        q_y = compute_q_y(cell_snv_groups, presence, clones, q_z,  cells_per_snv)
-        likelihood = compute_likelihood(cell_snv_groups, snvs_per_cell, q_y, q_z, clones, presence)
-    
+        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix, log_q_z, presence, n_snvs, n_clones)
+        likelihood = compute_likelihood_sparse(cell_idx, snv_idx, log_like_matrix, log_q_y, log_q_z, presence, n_clones)
+
+        likelihood = 0.0  # You can optionally implement compute_likelihood_sparse
 
         if np.abs(likelihood - best_likelihood) < tolerance:
             if verbose:
                 print(f"Converged after {it} iterations.")
                 print(f"Best likelihood: {best_likelihood}")
-            converged =True
-    
+            converged = True
 
         if likelihood > best_likelihood:
-  
-            best_q_z = q_z
-            best_q_y = q_y 
+            best_q_z = q_z.copy()
+            best_q_y = q_y.copy()
             best_likelihood = likelihood
-        
+
         if converged:
             break
-           
-    
-        
-    
+
     return best_likelihood, best_q_z, best_q_y
         
 
 
 
-
-
-  
-
-
-
-def compute_q_z( cell_snv_groups: dict,
-                presence: dict,
-                clones: list,
-                q_y: dict,
-                snvs_per_cell:dict) -> dict:
-    """
-    Computes q(z_i = r) ∝ ∏_j sum_p q(y_j=p) * P(a_ij | z_i=r, y_j=p)
-    using log-sum-exp for numerical stability.
-
-    Parameters
-    ----------
-    read_counts : pd.DataFrame
-        Must include columns: 'cell', 'snv', 'log_present', 'log_absent', 'cluster'.
-    genotype_matrix : pd.DataFrame
-        Must include column 'Child' listing clone IDs.
-    q_y : dict
-        Nested dictionary: q_y[snv][cluster] = probability
-
-    Returns
-    -------
-    q_z : dict
-        Nested dict: q_z[cell][clone] = log-prob (unnormalized)
-    """
-
-
-    # Filter only valid clusters present in the tree
-
-  
-
-
-
-    q_z = defaultdict(dict)
-
-
-    for i, snvs in snvs_per_cell.items():
-        q_z_i_r = np.zeros(len(clones))
-        for idx_r, r in enumerate(clones):
-     
-            for snv in snvs:
-                key = (i, snv)
-                if key not in cell_snv_groups:
-                    continue
-                row = cell_snv_groups[key].iloc[0]  # should be just one row
-
-                q_zi_clones = []
-                for p in clones:
-                    if q_y[snv][p] > 0:
-                        col = "log_present" if presence[p,r] else "log_absent"
-                        log_prob = row[col]
-                        log_q_y = np.log(q_y[snv][p])
-                        q_zi_clones.append(log_q_y + log_prob)
-
-                q_z_i_r[idx_r] += logsumexp(q_zi_clones)
-
-        q_z_i_probs = softmax(q_z_i_r, axis=0)
-
-        for idx_r, r in enumerate(clones):
-            q_z[i][r] = q_z_i_probs[idx_r]
-       
-        
-
-    return q_z
-
-            
-
-
-
-
-def compute_q_y( cell_snv_groups: dict,
-                presence: dict,
-                clones: list,
-                q_z: dict,
-                cells_per_snv: dict) -> dict:
-    """
-    Computes q(y_j = p) ∝ ∏_i sum_r q(z_i=r) * P(a_ij | z_i=r, y_j=p)
-    using log-sum-exp for numerical stability.
-
-    Parameters
-    ----------
-    read_counts : pd.DataFrame
-        Must include columns: 'cell', 'snv', 'log_present', 'log_absent'
-    presence : dict
-        Dictionary of (p, r) -> bool indicating if r is a descendant of p.
-    clones : list
-        List of clone identifiers.
-    q_z : dict
-        Posterior assignment: q_z[cell][r] = P(z_i = r)
-    cell_snv_groups : dict
-        Mapping of (cell, snv) -> row of read_counts
-    cells_per_snv : dict
-        Mapping of snv -> set of cells that observe it
-
-    Returns
-    -------
-    q_y : dict
-        Nested dict: q_y[snv][clone] = probability
-    """
-
-    q_y = defaultdict(dict)
-
-    for snv in cells_per_snv:
-        log_q_y_j_p = np.zeros(len(clones))
-
-        for idx_p, p in enumerate(clones):
-            for cell in cells_per_snv[snv]:
-                key = (cell, snv)
-                if key not in cell_snv_groups:
-                    continue
-
-                row = cell_snv_groups[key].iloc[0]  # should be just one row
-
-                log_terms = []
-                for r in clones:
-                    if q_z[cell][r] > 0:
-                        col = "log_present" if presence[(p, r)] else "log_absent"
-                        log_prob = row[col]
-                        
-                        log_q_z = np.log(q_z[cell][r])
-                        log_terms.append(log_q_z + log_prob)
-
-                log_q_y_j_p[idx_p] += logsumexp(log_terms)
-
-        # Normalize across p for each snv j
-        q_y_j_probs = softmax(log_q_y_j_p)
-
-        for idx_p, p in enumerate(clones):
-            q_y[snv][p] = q_y_j_probs[idx_p]
-
-    return q_y
 
 
 
@@ -451,18 +392,29 @@ def precompute_log_likelihoods(read_counts: pd.DataFrame, error_rate=0.001) -> p
         read_counts["alt"], read_counts["total"], 0.5 - error_rate + 0.5 * error_rate / 3
     )
 
+    cells = read_counts["cell"].unique() 
+    snvs = read_counts["snv"].unique()
+
+    cell_to_idx = {cell: idx for idx, cell in enumerate(cells)}
+    snv_to_idx = {snv: idx for idx, snv in enumerate(snvs)}
+
     #create a dictionary of dictionaries
     #
-    cell_like_dict =  {} # {cell: {snv1: {"log_present": "log_absent"},  }}
-    snv_like_dict = {} # {snv: }
+   
+    return read_counts, cell_to_idx, snv_to_idx
 
+def tree_to_clone_set(tree: list) -> list: 
+    clones = set()
+    for u,v in tree:
+        clones.add(u)
+        clones.add(v)
+    
+    return clones
 
-    return read_counts, cell_like_dict, snv_like_dict
 
 def rank_trees(tree_list: list, 
                read_counts: pd.DataFrame, 
-               alpha: float=0.001, 
-               topn: int=None, 
+               alpha: float=0.001,  
                max_iter: int=10,
                tolerance: float=5,
                verbose: bool=False) -> tuple:
@@ -501,13 +453,39 @@ def rank_trees(tree_list: list,
     >>> print(Entropy.head())
     """
 
-   
+    tree = tree_list[0]
+    clone_set = tree_to_clone_set(tree) 
+    for tree in tree_list:
+        if tree_to_clone_set(tree) != clone_set:
+            raise ValueError("All trees must have the same set of clones.")
+
+    clones = list(clone_set)
+    # Filter read_counts to only include cells and SNVs present in the tree
+    read_counts = read_counts[
+        read_counts["cluster"].isin(clones)
+    ]
+
+
+
+
 
     #appends columns log_absent and log_present to read_counts
-    read_counts = precompute_log_likelihoods(read_counts, alpha)
+    read_counts, cell_to_idx, snv_to_idx = precompute_log_likelihoods(read_counts, alpha)
+    q_y = initialize_q_y(read_counts, clones, snv_to_idx)
+    cell_idx, snv_idx, log_like_matrix = build_sparse_input(read_counts, cell_to_idx, snv_to_idx)
+
+    n_cells = len(cell_to_idx)
+    n_snvs = len(snv_to_idx)
+    n_clones = len(clones)
+    cell_ptr, cell_sort_idx = build_index_pointers(cell_idx, n_cells)
+    snv_ptr, snv_sort_idx = build_index_pointers(snv_idx, n_snvs)
+    cell_idx = cell_idx[cell_sort_idx]
+    snv_idx = snv_idx[cell_sort_idx]
+    log_like_matrix = log_like_matrix[np.repeat(cell_sort_idx, 2)]
+
     best_likelihood = -np.inf
     likelihoods = {}
-    print(tree_list)
+
     for idx, tree in enumerate(tree_list):
 
         """
@@ -520,12 +498,28 @@ def rank_trees(tree_list: list,
 
         if verbose:
             print(f"Starting tree {idx}...")
-        expected_log_like, q_z, q_y = run(tree = tree, 
-                read_counts = read_counts, 
+        
+        genotype_matrix = get_descendants_matrix(tree)
+  
+
+        presence = enumerate_presence(genotype_matrix, clones)
+
+        #run doesn't know the labels, everything is in index space
+        expected_log_like, q_z, q_y = run(presence, 
+                log_like_matrix = log_like_matrix,
+                cell_idx = cell_idx,
+                snv_idx = snv_idx,
+                n_cells = n_cells,
+                n_snvs = n_snvs,
+                n_clones = n_clones, 
+                q_y = q_y,
+                cell_ptr = cell_ptr,
+                snv_ptr = snv_ptr,
                 max_iter = max_iter,
                 tolerance = tolerance,
                 verbose = verbose)
-        tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y)
+
+        tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y, cell_to_idx, snv_to_idx, clones)
         if verbose:
             print(f"Tree {idx} fit wtih likelihood: {expected_log_like}")
         likelihoods[idx] = expected_log_like
