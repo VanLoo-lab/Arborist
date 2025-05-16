@@ -9,6 +9,12 @@ from scipy.special import softmax
 import itertools
 from .treefit import TreeFit
 
+import numpba 
+
+
+@numba.jit(nopython=True)
+def compute_q_z_numba(cell_like_dict:dict, q_y:dict, clones:list):
+
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tree ranking script")
@@ -74,6 +80,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "-d", "--draw", required=False, type=str, help="Path to save the tree image"
     )
+    parser.add_argument(
+         "--edge-sep", required=False, type=str,  default=" ", help="edge separator in tree list"
+    )
 
     return parser.parse_args()
 
@@ -138,21 +147,17 @@ def compute_likelihood(cell_snv_groups: dict, snvs_per_cell: dict, q_y: dict, q_
     """
     expected_likelihood = 0.0
     for cell in snvs_per_cell:
-        rows = [
-            cell_snv_groups[(cell, snv)].iloc[0]
-            for snv in snvs_per_cell[cell]
-            if (cell, snv) in cell_snv_groups
-        ]
+        rows = [cell_snv_groups[(cell, snv)] for snv in snvs_per_cell[cell] if (cell, snv) in cell_snv_groups]
         if not rows:
             continue
-        df = pd.DataFrame(rows)
+        snvs = [row["snv"] for row in rows]
         for r in clones:
             p_z = q_z[cell][r]
             for p in clones:
-                col = "log_present" if presence[(p, r)] else "log_absent"
-                probs = df[col].values
-                p_ys = np.array([q_y[snv][p] for snv in df["snv"]])
-                terms = probs * p_z * p_ys
+                terms = [
+                    (row["log_present"] if presence[(p, r)] else row["log_absent"]) * p_z * q_y[snv][p]
+                    for row, snv in zip(rows, snvs)
+                ]
                 expected_likelihood += np.sum(terms)
     return expected_likelihood
         
@@ -223,7 +228,7 @@ def run(tree: list,
     ]
 
     # Pre-group by (cell, snv) to avoid repeated filtering
-    cell_snv_groups = dict(tuple(filtered_read_counts.groupby(["cell", "snv"])))
+    cell_snv_groups = {(row["cell"], row["snv"]): row for _, row in filtered_read_counts.iterrows()}
     snvs_per_cell = defaultdict(set)
     for cell, snv in cell_snv_groups.keys():
         snvs_per_cell[cell].add(snv)
@@ -231,6 +236,8 @@ def run(tree: list,
     for cell, snv in cell_snv_groups.keys():
         cells_per_snv[snv].add(cell)
 
+    if verbose:
+        print(f"Running Arborist on tree {tree}")
 
     # initialize SNV posterior
     q_y = initialize_q_y(filtered_read_counts, clones)
@@ -444,7 +451,13 @@ def precompute_log_likelihoods(read_counts: pd.DataFrame, error_rate=0.001) -> p
         read_counts["alt"], read_counts["total"], 0.5 - error_rate + 0.5 * error_rate / 3
     )
 
-    return read_counts
+    #create a dictionary of dictionaries
+    #
+    cell_like_dict =  {} # {cell: {snv1: {"log_present": "log_absent"},  }}
+    snv_like_dict = {} # {snv: }
+
+
+    return read_counts, cell_like_dict, snv_like_dict
 
 def rank_trees(tree_list: list, 
                read_counts: pd.DataFrame, 
@@ -494,6 +507,7 @@ def rank_trees(tree_list: list,
     read_counts = precompute_log_likelihoods(read_counts, alpha)
     best_likelihood = -np.inf
     likelihoods = {}
+    print(tree_list)
     for idx, tree in enumerate(tree_list):
 
         """
@@ -504,16 +518,21 @@ def rank_trees(tree_list: list,
         )
         """
 
+        if verbose:
+            print(f"Starting tree {idx}...")
         expected_log_like, q_z, q_y = run(tree = tree, 
                 read_counts = read_counts, 
                 max_iter = max_iter,
                 tolerance = tolerance,
                 verbose = verbose)
         tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y)
+        if verbose:
+            print(f"Tree {idx} fit wtih likelihood: {expected_log_like}")
         likelihoods[idx] = expected_log_like
         if expected_log_like > best_likelihood:
             best_fit = tfit
             best_likelihood = expected_log_like
+ 
     return likelihoods, best_fit
     
         
@@ -531,7 +550,7 @@ def main():
     if args.sapling:
         read_trees = read_tree_edges_sapling
 
-    candidate_trees = read_trees(args.trees)
+    candidate_trees = read_trees(args.trees, sep=args.edge_sep)
 
     likelihoods, tfit = rank_trees(
         candidate_trees,

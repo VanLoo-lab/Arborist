@@ -69,7 +69,7 @@ def get_descendants(tree_dict, node):
     return collect_descendants(node)
 
 
-def read_tree_edges_conipher(file_path):
+def read_tree_edges_conipher(file_path, sep=" "):
     """
     Reads tree edges from a file and organizes them into a list of trees.
 
@@ -129,7 +129,7 @@ def read_tree_edges_conipher(file_path):
                 continue
 
             # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
+            parts = line.split(sep)
             if len(parts) == 2:
                 current_tree.append((int(parts[0]), int(parts[1])))
 
@@ -139,7 +139,7 @@ def read_tree_edges_conipher(file_path):
     return trees
 
 
-def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
+def read_tree_edges_sapling(file_path, header_prefix="backbone tree", sep="\t"):
     """
     Reads tree edges from a file and organizes them into a list of trees.
 
@@ -204,7 +204,7 @@ def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
                 continue
 
             # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
+            parts = line.split(sep)
             if len(parts) == 2:
                 current_tree.append((int(parts[0]), int(parts[1])))
 

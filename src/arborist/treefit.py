@@ -18,10 +18,12 @@ class TreeFit:
     @staticmethod
     def convert_q_to_dataframe(q_dict):
         """
-        Convert the q_z and q_y dictionaries to dataframes
+        Convert a nested dictionary {row_id: {column_id: value}} to a DataFrame
+        with row_ids as a column named 'id' and column_ids as the remaining columns.
         """
-
-        return pd.DataFrame(q_dict)
+        df = pd.DataFrame.from_dict(q_dict, orient='index')
+        df.index.name = "id"
+        return df.reset_index()
     
     def q_z_df(self):
         return self.convert_q_to_dataframe(self.q_z)
