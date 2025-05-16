@@ -10,7 +10,7 @@ from scipy.special import softmax
 from .treefit import TreeFit
 
 
-numba.set_num_threads(10)
+numba.set_num_threads(12)
 
 
 
@@ -550,7 +550,6 @@ def main():
         candidate_trees,
         read_counts,
         alpha=args.alpha,
-        topn=args.topn,
         verbose=args.verbose,
     )
 
