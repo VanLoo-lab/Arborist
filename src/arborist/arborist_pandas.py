@@ -138,6 +138,7 @@ def compute_likelihood(cell_snv_groups: dict, snvs_per_cell: dict, q_y: dict, q_
     """
     expected_likelihood = 0.0
     for cell in snvs_per_cell:
+
         rows = [
             cell_snv_groups[(cell, snv)].iloc[0]
             for snv in snvs_per_cell[cell]
@@ -151,9 +152,21 @@ def compute_likelihood(cell_snv_groups: dict, snvs_per_cell: dict, q_y: dict, q_
             for p in clones:
                 col = "log_present" if presence[(p, r)] else "log_absent"
                 probs = df[col].values
-                p_ys = np.array([q_y[snv][p] for snv in df["snv"]])
-                terms = probs * p_z * p_ys
-                expected_likelihood += np.sum(terms)
+                for snv, prob in zip(df["snv"], df[col].values):
+                 
+                    p_y = q_y[snv][p] 
+                    # if cell ==0 and snv == 'chr3:30521:T:G':
+                    #     print(f"cell {cell}, snv {snv}, p {p}, log prob {prob}")
+              
+                    #     print(f"presence {presence[(p, r)]}, p_z {p_z}, p_y {p_y}")
+                    #     print(f"log p_z: {np.log(p_z)} log p _y: {np.log(p_y)}")
+                    #     print(f"q_z {q_z[cell]}, q_y {q_y[snv]}")
+
+                # p_ys = np.array([q_y[snv][p] for snv in df["snv"]])
+                    terms = prob * np.exp(np.log(p_z)+  np.log( p_y))
+                    # print(f"cell {cell}, snv {snv}, r {r}, p {p}, p_z {p_z}, p_y {p_y}, terms {terms}")
+        
+                    expected_likelihood += terms
     return expected_likelihood
         
 
@@ -238,10 +251,15 @@ def run(tree: list,
     for it in range(max_iter):
 
         q_z = compute_q_z(cell_snv_groups, presence, clones, q_y,  snvs_per_cell)
+
         q_y = compute_q_y(cell_snv_groups, presence, clones, q_z,  cells_per_snv)
+   
         likelihood = compute_likelihood(cell_snv_groups, snvs_per_cell, q_y, q_z, clones, presence)
     
-
+        if verbose:
+            print(f"Iteration {it}:")
+            print(f"Likelihood: {likelihood}")
+           
         if np.abs(likelihood - best_likelihood) < tolerance:
             if verbose:
                 print(f"Converged after {it} iterations.")
@@ -446,7 +464,7 @@ def precompute_log_likelihoods(read_counts: pd.DataFrame, error_rate=0.001) -> p
 
     return read_counts
 
-def rank_trees(tree_list: list, 
+def rank_trees_pandas(tree_list: list, 
                read_counts: pd.DataFrame, 
                alpha: float=0.001, 
                topn: int=None, 
@@ -509,7 +527,7 @@ def rank_trees(tree_list: list,
                 max_iter = max_iter,
                 tolerance = tolerance,
                 verbose = verbose)
-        tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y)
+        tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y, {}, {}, [])
         likelihoods[idx] = expected_log_like
         if expected_log_like > best_likelihood:
             best_fit = tfit
@@ -533,7 +551,7 @@ def main():
 
     candidate_trees = read_trees(args.trees)
 
-    likelihoods, tfit = rank_trees(
+    likelihoods, tfit = rank_trees_pandas(
         candidate_trees,
         read_counts,
         alpha=args.alpha,
