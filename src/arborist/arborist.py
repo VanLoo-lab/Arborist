@@ -35,11 +35,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Per base sequencing error",
     )
     parser.add_argument(
-        "--topn",
+        "--max-iter",
         required=False,
         type=int,
         default=25,
-        help="Filter only the top n trees, default is 25.",
+        help="max number of iterations.",
     )
     parser.add_argument(
         "--ranking",
@@ -80,6 +80,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
          "--edge-sep", required=False, type=str,  default=" ", help="edge separator in tree list"
     )
+    parser.add_argument("-t", "--tree", required=True, help="Path to save the top ranked tree file.")
 
     return parser.parse_args()
 
@@ -270,7 +271,7 @@ def initialize_q_y(read_counts: pd.DataFrame,clones: list, snv_to_idx:dict) -> d
 
               
 
-# @njit
+@njit
 def run(presence: np.ndarray,
         log_like_matrix_cell_sort: np.ndarray,
         log_like_matrix_snv_sort: np.ndarray,
@@ -531,6 +532,7 @@ def main():
         read_counts,
         alpha=args.alpha,
         verbose=args.verbose,
+        max_iter=args.max_iter
     )
 
     
@@ -565,3 +567,6 @@ def main():
         tfit.q_z_df().to_csv(args.q_z, index=False)
     if args.q_y:    
         tfit.q_y_df().to_csv(args.q_y, index=False)
+    
+    if args.tree:
+        tfit.save_tree(args.tree)

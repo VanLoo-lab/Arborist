@@ -73,3 +73,11 @@ class TreeFit:
         assigns snvs to the maximum a posteriori (MAP) cluster
         """
         return self.map_assign(self.q_y, self.snv_to_idx)
+    
+    def save_tree(self,fname):
+        pass 
+        with open(fname, "w+") as file:
+            file.write("# tree\n")
+            for u,v in self.tree:
+                file.write(f"{u},{v}\n")
+        
