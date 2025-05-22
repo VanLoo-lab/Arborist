@@ -35,6 +35,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Per base sequencing error",
     )
     parser.add_argument(
+        "--beta",
+        required=False,
+        type=float,
+        default=0.0,
+        help="Regularization parameter for q(y) KL Divergence with initial distribution.",
+    )
+    parser.add_argument(
         "--max-iter",
         required=False,
         type=int,
@@ -123,6 +130,16 @@ def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells,
 
     return q_z
 
+
+@njit
+def compute_kl_divergence(q_y, q_y_init):
+    kl = 0.0
+    for j in range(q_y.shape[0]):
+        for p in range(q_y.shape[1]):
+            # if q_y[j, p] > 0 and q_y_init[j, p] > 0:
+                kl += q_y[j, p] * (np.log(q_y[j, p] + 1e-12) - np.log(q_y_init[j, p]+1e-12))
+    return kl
+
 @njit 
 def log_array(arr):
     log_arr = np.full_like(arr, -np.inf)
@@ -139,27 +156,32 @@ def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, 
     for j in prange(n_snvs):
         for p in range(n_clones):
             acc = 0.0
-            for k in range(snv_ptr[j], snv_ptr[j+1]):
+            for k in range(snv_ptr[j], snv_ptr[j + 1]):
                 log_present = log_likes[2 * k]
                 log_absent = log_likes[2 * k + 1]
                 i = cell_idx[k]
-                # Build log-sum-exp terms for this (i, j) pair
+
                 log_terms = np.empty(n_clones)
                 for r in range(n_clones):
-                
-                        log_prob = log_present * presence[p, r] + log_absent * (1 - presence[p, r])
-                        log_terms[r] = log_q_z[i,r] + log_prob
-                   
+                    log_prob = log_present if presence[p, r] else log_absent
+                    log_terms[r] = log_q_z[i, r] + log_prob
 
-     
                 acc += logsumexp_inline(log_terms, n_clones)
 
             q_y[j, p] = acc
+
 
         # Normalize to softmax
         max_log = np.max(q_y[j])
         q_y[j] = np.exp(q_y[j] - max_log)
         q_y[j] /= np.sum(q_y[j])
+    
+    # for j in range(q_y.shape[0]):
+    #     for p in range(q_y.shape[1]):
+    #         q_y[j,p] = q_y_init[j,p]*lamb + (1-lamb)*q_y[j,p]
+    #     max_log = np.max(q_y[j])
+    #     q_y[j] = np.exp(q_y[j] - max_log)
+    #     q_y[j] /= np.sum(q_y[j])
 
     return q_y
 
@@ -251,18 +273,45 @@ def enumerate_presence(genotype_matrix: pd.DataFrame, clones: list) -> np.array:
                 presence[p,r] = 0
     return presence
 
-def initialize_q_y(read_counts: pd.DataFrame,clones: list, snv_to_idx:dict) -> dict:
+def initialize_q_y(
+    read_counts: pd.DataFrame,
+    clones: list,
+    snv_to_idx: dict
+) -> np.ndarray:
     """
-    Initializes q(y_j = p) for each SNV j and clone p based on cluster assignment:
-    """
+    Initialize the variational posterior q(y_j = p) for each SNV j and clone p.
 
-  
-    cluster = dict(zip(read_counts["snv"], read_counts["cluster"]))
-    q_y = np.zeros((len(cluster), len(clones)), dtype=np.float64)
-    for snv in cluster:
+    Parameters
+    ----------
+    read_counts : pd.DataFrame
+        Must have columns 'snv' and 'cluster', where 'cluster' is the
+        initial hard assignment ψ(snv) in [clones].
+    clones : list
+        List of clone identifiers (length k).
+    snv_to_idx : dict
+        Mapping from SNV identifiers to row indices 0..m-1 in the output array.
+
+    Returns
+    -------
+    q_y : np.ndarray, shape (m, k)
+        q_y[j, p] = 0.99 if ψ(j) == p else 0.01/(k-1).
+    """
+    # Build a quick map: snv -> its hard cluster
+    cluster_map = dict(zip(read_counts["snv"], read_counts["cluster"]))
+    m, k = len(cluster_map), len(clones)
+    q_y = np.zeros((m, k), dtype=np.float64)
+
+    # Epsilon mass on correct cluster; uniform remainder
+    eps = 0.01
+    eps = 0.0
+    correct = 1.0 - eps
+    other = eps / (k - 1) if k > 1 else 0.0
+
+    for snv, assigned in cluster_map.items():
         j = snv_to_idx[snv]
-        for p, clone_p in enumerate(clones):
-            q_y[j,p]= 0.99 if cluster[snv] == clone_p else 0.01 / (len(clones) - 1)
+        for p_idx, clone_id in enumerate(clones):
+            q_y[j, p_idx] = correct if (assigned == clone_id) else other
+
     return q_y
 
     
@@ -280,40 +329,64 @@ def run(presence: np.ndarray,
         n_cells: int,
         n_snvs: int,
         n_clones: int,
-        q_y: np.ndarray,
+        q_y_init: np.ndarray,
         cell_ptr: np.ndarray,
         snv_ptr: np.ndarray,
         max_iter=10,
         tolerance=1,
+        beta = 0.5,
         verbose=False):
 
-    best_likelihood = -np.inf
-    best_q_z = np.zeros((n_cells, n_clones))
-    best_q_y = np.zeros((n_snvs, n_clones))
-    converged = False
+    # Compute initial q_z and ELBO before any updates
+    log_q_y = log_array(q_y_init)
+    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
+    log_q_z = log_array(q_z)
+    initial_likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
+    kl_penalty = compute_kl_divergence(q_y_init, q_y_init)
+    initial_elbo = initial_likelihood - beta * kl_penalty
 
-    log_q_y = log_array(q_y)
+    # Initialize best values to initial state
+    best_likelihood = initial_elbo
+    best_q_z = q_z.copy()
+    best_q_y = q_y_init.copy()
+
+
+   
+    # psi = q_y.argmax(axis=1)
+    # print(f"Initial unique clusters: {np.unique(psi).shape[0]}")
+    # print(psi.shape)
 
     for it in range(max_iter):
+
+        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones)
+        new_psi = q_y.argmax(axis=1)
+        # num_different  = (new_psi !=psi).sum()
+        # perc_different = num_different/psi.shape[0]
+        # print(f"Number different: {num_different}, {100*perc_different}%")
+        # print(f"Unique SNV clusters: {np.unique(psi).shape[0]}")
+        log_q_y = log_array(q_y)
        
         q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
 
         log_q_z = log_array(q_z)
 
-        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones)
 
-        log_q_y = log_array(q_y)
+  
         likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
+        kl_penalty = compute_kl_divergence(q_y, q_y_init)
+        # print(f"Likelihood: {likelihood:.2f}, KL: {kl_penalty:.2f}, beta*KL: {beta*kl_penalty:.2f}")
+        likelihood = likelihood - beta*kl_penalty
 
-        if verbose:
-            print(f"Iteration {it}-----")
-            print(f"Likelihood: {likelihood}")
+        # # print(f"Likelihood: {likelihood:.2f}")
+        # if verbose:
+        #     print(f"Iteration {it}----------")
+        #     print(f"Likelihood: {likelihood}")
     
 
         if np.abs(likelihood - best_likelihood) < tolerance:
-            if verbose:
-                print(f"Converged after {it} iterations.")
-                print(f"Best likelihood: {best_likelihood}")
+            # if verbose:
+            #     print(f"Converged after {it} iterations.")
+            #     print(f"Best likelihood: {best_likelihood}")
             converged = True
 
         if likelihood > best_likelihood:
@@ -395,6 +468,7 @@ def tree_to_clone_set(tree: list) -> list:
 def rank_trees(tree_list: list, 
                read_counts: pd.DataFrame, 
                alpha: float=0.001,  
+               beta: float= 0,
                max_iter: int=10,
                tolerance: float=5,
                verbose: bool=False) -> tuple:
@@ -451,7 +525,7 @@ def rank_trees(tree_list: list,
 
     #appends columns log_absent and log_present to read_counts
     read_counts, cell_to_idx, snv_to_idx = precompute_log_likelihoods(read_counts, alpha)
-    q_y = initialize_q_y(read_counts, clones, snv_to_idx)
+    q_y_init = initialize_q_y(read_counts, clones, snv_to_idx)
     cell_idx, snv_idx, log_like_matrix = build_sparse_input(read_counts, cell_to_idx, snv_to_idx)
 
     n_cells = len(cell_to_idx)
@@ -493,11 +567,12 @@ def rank_trees(tree_list: list,
                 n_cells = n_cells,
                 n_snvs = n_snvs,
                 n_clones = n_clones, 
-                q_y = q_y,
+                q_y_init = q_y_init,
                 cell_ptr = cell_ptr,
                 snv_ptr = snv_ptr,
                 max_iter = max_iter,
                 tolerance = tolerance,
+                beta = beta,
                 verbose = verbose)
 
         tfit = TreeFit(tree, idx, expected_log_like, q_z, q_y, cell_to_idx, snv_to_idx, clones)
@@ -531,6 +606,7 @@ def main():
         candidate_trees,
         read_counts,
         alpha=args.alpha,
+        beta = args.beta,
         verbose=args.verbose,
         max_iter=args.max_iter
     )
@@ -554,7 +630,7 @@ def main():
     likelihoods_df = likelihoods_df.sort_values(by="likelihood", ascending=False)
 
 
-
+    print(likelihoods_df)
     # # Save results
     if args.ranking:
         likelihoods_df.to_csv(args.ranking, index=False)
