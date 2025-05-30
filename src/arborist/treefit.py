@@ -11,7 +11,7 @@ class TreeFit:
     """
     tree: list 
     tree_idx: int 
-    expected_log_likelihood: float
+    elbo: float
     q_z: np.ndarray
     q_y: np.ndarray
     cell_to_idx: dict
@@ -20,7 +20,7 @@ class TreeFit:
  
     
     def __str__(self):
-        return f"{self.tree_idx}: {self.expected_log_likelihood}"
+        return f"{self.tree_idx}: {self.elbo}"
     
 
     def convert_q_to_dataframe(self, q, my_dict):
@@ -48,7 +48,7 @@ class TreeFit:
         return df 
     
     def __repr__(self):
-        return f"TreeFit(tree={self.tree}, tree_idx={self.tree_idx}, expected_log_likelihood={self.expected_log_likelihood})"
+        return f"TreeFit(tree={self.tree}, tree_idx={self.tree_idx}, expected_log_likelihood={self.elbo})"
 
     @staticmethod
     def map_assign(q, mydict):

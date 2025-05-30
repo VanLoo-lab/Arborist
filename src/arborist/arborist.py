@@ -34,13 +34,6 @@ def parse_arguments() -> argparse.Namespace:
         help="Per base sequencing error",
     )
     parser.add_argument(
-        "--beta",
-        required=False,
-        type=float,
-        default=0.0,
-        help="Regularization parameter for q(y) KL Divergence with initial distribution.",
-    )
-    parser.add_argument(
         "--max-iter",
         required=False,
         type=int,
@@ -93,13 +86,7 @@ def parse_arguments() -> argparse.Namespace:
 
     return parser.parse_args()
 
-@njit
-def soft_max_with_annealing(arr, tau):
-    for j in range(arr.shape[0]):
-        max_log = np.max(arr[j])
-        arr[j] = np.exp((arr[j] - max_log) / tau)
-        arr[j] /= np.sum(arr[j])
-    return arr
+
 
 @njit
 def soft_max(arr):
@@ -122,7 +109,7 @@ def logsumexp_inline(log_terms, n):
     return max_log + np.log(sum_exp)
 
 @njit(parallel=True)
-def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones, tau):
+def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones):
     q_z = np.zeros((n_cells, n_clones))
 
     for i in prange(n_cells):
@@ -142,15 +129,20 @@ def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells,
 
             q_z[i, r] = acc
 
-        # Normalize to softmax
-        # max_log = np.max(q_z[i])
-        # q_z[i] = np.exp(q_z[i] - max_log)
-        # q_z[i] /= np.sum(q_z[i])
-    if tau > 0:
-       q_z = soft_max_with_annealing(q_z, tau)
-    else:
-        q_z = soft_max(q_z)
-    return q_z
+ 
+
+    return soft_max(q_z)
+
+
+
+@njit
+def compute_entropy(q):
+    ent = 0.0
+    for i in range(q.shape[0]):
+        for j in range(q.shape[1]):
+            if q[i, j] > 0:
+                ent -= q[i, j] * np.log(q[i, j] + 1e-12)
+    return ent
 
 
 @njit
@@ -158,8 +150,7 @@ def compute_kl_divergence(q_y, q_y_init):
     kl = 0.0
     for j in range(q_y.shape[0]):
         for p in range(q_y.shape[1]):
-            # if q_y[j, p] > 0 and q_y_init[j, p] > 0:
-                kl += q_y[j, p] * (np.log(q_y[j, p] + 1e-12) - np.log(q_y_init[j, p]+1e-12))
+            kl += q_y[j, p] * (np.log(q_y[j, p] + 1e-12) - np.log(q_y_init[j, p]+1e-12))
     return kl
 
 @njit 
@@ -172,7 +163,7 @@ def log_array(arr):
     return log_arr
 
 @njit(parallel=True)
-def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones, tau):
+def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones, log_q_y_init):
     q_y = np.zeros((n_snvs, n_clones-1))
 
     for j in prange(n_snvs):
@@ -190,26 +181,11 @@ def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, 
 
                 acc += logsumexp_inline(log_terms, n_clones)
 
-            q_y[j, p] = acc
+            q_y[j, p] = acc + log_q_y_init[j,p]
 
 
-        # # Normalize to softmax
-        # max_log = np.max(q_y[j])
-        # q_y[j] = np.exp(q_y[j] - max_log)
-        # q_y[j] /= np.sum(q_y[j])
-    
-    # for j in range(q_y.shape[0]):
-    #     for p in range(q_y.shape[1]):
-    #         q_y[j,p] = q_y_init[j,p]*lamb + (1-lamb)*q_y[j,p]
-    #     max_log = np.max(q_y[j])
-    #     q_y[j] = np.exp(q_y[j] - max_log)
-    #     q_y[j] /= np.sum(q_y[j])
 
-    if tau > 0:
-       q_y = soft_max_with_annealing(q_y, tau)
-    else:
-        q_y = soft_max(q_y)
-    return q_y
+    return soft_max(q_y)
 
 @njit(parallel=True)
 def compute_likelihood_sparse(cell_ptr, snv_idx, log_likes, log_q_y, log_q_z, presence, n_clones, n_cells):
@@ -295,28 +271,7 @@ def enumerate_presence(tree:list, clones:list, clusters:list) -> np.array:
     return presence
 
 
-# def enumerate_presence(genotype_matrix: pd.DataFrame, clones: list) -> np.array:
-#     """
-#     Enumerates the presence of each clone in the genotype matrix.
-#     """
-#     n_clones =len(clones)
-#     presence = np.zeros((n_clones, n_clones), dtype=int)
- 
-#     for p in range(n_clones):
-#         clone_p = clones[p]
-#         for r in range(n_clones):
-       
-#             clone_r = clones[r]
-#             # check if p is an ancestor of r
-#             p_descendant_set = genotype_matrix.loc[
-#                 genotype_matrix["clone"] == clone_p, "descendants"
-#             ].values[0]
-        
-#             if clone_r in p_descendant_set:
-#                 presence[p,r] = 1
-#             else:
-#                 presence[p,r] = 0
-#     return presence
+
 
 def initialize_q_y(
     read_counts: pd.DataFrame,
@@ -362,24 +317,6 @@ def initialize_q_y(
 
     
 
-@njit
-def init_score(presence: np.ndarray,
-        log_like_matrix_cell_sort: np.ndarray,
-        snv_idx: np.ndarray,
-        n_cells: int,
-        n_clones: int,
-        q_y_init: np.ndarray,
-        cell_ptr: np.ndarray,
-        beta = 0.5):
-
-    # Compute initial q_z and ELBO before any updates
-    log_q_y = log_array(q_y_init)
-    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
-    log_q_z = log_array(q_z)
-    initial_likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
-    kl_penalty = compute_kl_divergence(q_y_init, q_y_init)
-    initial_elbo = initial_likelihood - beta * kl_penalty
-    return initial_elbo
 
               
 
@@ -396,74 +333,55 @@ def run(presence: np.ndarray,
         cell_ptr: np.ndarray,
         snv_ptr: np.ndarray,
         max_iter=10,
-        tolerance=1,
-        beta = 0.5,
-        verbose=False):
+        tolerance=1):
 
-    tau_init = 1.0
-    tau_final = 0.1
+
     # Compute initial q_z and ELBO before any updates
-    log_q_y = log_array(q_y_init)
-    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
+    log_q_y_init = log_array(q_y_init)
+    log_q_y = log_q_y_init.copy()
+    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
     log_q_z = log_array(q_z)
     initial_likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
-    kl_penalty = compute_kl_divergence(q_y_init, q_y_init)
-    initial_elbo = initial_likelihood - beta * kl_penalty
+    best_elbo = initial_likelihood + compute_entropy(q_z) - compute_kl_divergence(q_y_init, q_y_init)
 
     # Initialize best values to initial state
-    best_likelihood = initial_elbo
     best_q_z = q_z.copy()
     best_q_y = q_y_init.copy()
 
     converged = False
    
-    # psi = q_y.argmax(axis=1)
-    # print(f"Initial unique clusters: {np.unique(psi).shape[0]}")
-    # print(psi.shape)
+
 
     for it in range(max_iter):
-        tau = tau_init * (tau_final / tau_init) ** (it / max_iter)
 
-        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones, tau=0)
-        new_psi = q_y.argmax(axis=1)
-        # num_different  = (new_psi !=psi).sum()
-        # perc_different = num_different/psi.shape[0]
-        # print(f"Number different: {num_different}, {100*perc_different}%")
-        # print(f"Unique SNV clusters: {np.unique(psi).shape[0]}")
+
+        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones, log_q_y_init)
         log_q_y = log_array(q_y)
        
-        q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
-
+        q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
         log_q_z = log_array(q_z)
 
 
-  
         likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
         kl_penalty = compute_kl_divergence(q_y, q_y_init)
-        # print(f"Likelihood: {likelihood:.2f}, KL: {kl_penalty:.2f}, beta*KL: {beta*kl_penalty:.2f}")
-        likelihood = likelihood - beta*kl_penalty
+        cell_entropy= compute_entropy(q_z)
+        elbo = likelihood  + cell_entropy - kl_penalty
 
-        # # print(f"Likelihood: {likelihood:.2f}")
-        # if verbose:
-        #     print(f"Iteration {it}----------")
-        #     print(f"Likelihood: {likelihood}")
+
     
 
-        if np.abs(likelihood - best_likelihood) < tolerance:
-            # if verbose:
-            #     print(f"Converged after {it} iterations.")
-            #     print(f"Best likelihood: {best_likelihood}")
+        if np.abs(elbo - best_elbo) < tolerance:
             converged = True
 
-        if likelihood > best_likelihood:
+        if elbo > best_elbo:
             best_q_z = q_z.copy()
             best_q_y = q_y.copy()
-            best_likelihood = likelihood
+            best_elbo = elbo
 
         if converged:
             break
 
-    return best_likelihood, best_q_z, best_q_y
+    return best_elbo, best_q_z, best_q_y
         
 
 
@@ -509,11 +427,8 @@ def tree_to_clone_set(tree: list) -> list:
 def rank_trees(tree_list: list, 
                read_counts: pd.DataFrame, 
                alpha: float=0.001,  
-               beta: float= 0,
                max_iter: int=10,
-               tolerance: float=5,
-               prune = False,
-               topn = 5,
+               tolerance: float=1,
                prior=0.7,
                verbose: bool=False) -> tuple:
     """
@@ -588,27 +503,10 @@ def rank_trees(tree_list: list,
     likelihoods = {}
 
     all_tree_fits ={}
-    scores = {}
-    genotype_matrices = {}
-    presence_matrices = {}
-    for idx, tree in enumerate(tree_list):
-        # genotype_matrices[idx] = get_descendants_matrix(tree)
 
 
-        presence_matrices[idx] = enumerate_presence(tree, clones, clusters)
-        scores[idx] =init_score(presence=presence_matrices[idx], 
-                    log_like_matrix_cell_sort=log_like_matrix_cell_sort, 
-                    snv_idx=snv_index_cell_sort, n_cells=n_cells, 
-                    n_clones=n_clones, q_y_init=q_y_init, cell_ptr=cell_ptr, beta=beta)
-    
-    
-    if prune:
-        top_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:topn]
-        tree_list_indices = [idx for idx, _ in top_scores]
-    else:
-        tree_list_indices = [i for i in range(len(tree_list))]
         #find the top ranking trees and filter tree list down to those indices
-    for idx in tree_list_indices:
+    for idx, tree in enumerate(tree_list):
 
         """
         # Main function to find cell assignments
@@ -621,10 +519,11 @@ def rank_trees(tree_list: list,
         if verbose:
             print(f"Starting tree {idx}...")
         
+        
         # genotype_matrix = genotype_matrices[idx]
   
 
-        presence = presence_matrices[idx]
+        presence = enumerate_presence(tree, clones, clusters)
 
         #run doesn't know the labels, everything is in index space
         expected_log_like, q_z, q_y = run(presence, 
@@ -639,9 +538,7 @@ def rank_trees(tree_list: list,
                 cell_ptr = cell_ptr,
                 snv_ptr = snv_ptr,
                 max_iter = max_iter,
-                tolerance = tolerance,
-                beta = beta,
-                verbose = verbose)
+                tolerance = tolerance)
 
         tfit = TreeFit(tree_list[idx], idx, expected_log_like, q_z, q_y, cell_to_idx, snv_to_idx, clones)
         all_tree_fits[idx] = tfit
@@ -658,8 +555,6 @@ def rank_trees(tree_list: list,
 
  
 
-
-
 def main():
     args = parse_arguments()
     read_counts = pd.read_csv(args.read_counts)
@@ -671,11 +566,10 @@ def main():
 
     candidate_trees = read_trees(args.trees, sep=args.edge_sep)
 
-    likelihoods, tfit, _ = rank_trees(
+    elbos, tfit, _ = rank_trees(
         candidate_trees,
         read_counts,
         alpha=args.alpha,
-        beta = args.beta,
         verbose=args.verbose,
         max_iter=args.max_iter,
         prior=args.prior
@@ -695,15 +589,15 @@ def main():
     cell_assign = tfit.map_assign_z()
     snv_assign = tfit.map_assign_y()
 
-    likelihoods_df = pd.DataFrame.from_dict(likelihoods, orient="index", columns=["likelihood"])
-    likelihoods_df = likelihoods_df.reset_index().rename(columns={"index": "tree_idx"})
-    likelihoods_df = likelihoods_df.sort_values(by="likelihood", ascending=False)
+    elbo_df = pd.DataFrame.from_dict(elbos, orient="index", columns=["elbo"])
+    elbo_df = elbo_df.reset_index().rename(columns={"index": "tree_idx"})
+    elbo_df = elbo_df.sort_values(by="elbo", ascending=False)
 
 
-    print(likelihoods_df)
+    print(elbo_df)
     # # Save results
     if args.ranking:
-        likelihoods_df.to_csv(args.ranking, index=False)
+        elbo_df.to_csv(args.ranking, index=False)
 
     if args.cell_assign:
         cell_assign.to_csv(args.cell_assign, index=False)
