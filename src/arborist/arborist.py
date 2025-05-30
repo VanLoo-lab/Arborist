@@ -94,6 +94,23 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 @njit
+def soft_max_with_annealing(arr, tau):
+    for j in range(arr.shape[0]):
+        max_log = np.max(arr[j])
+        arr[j] = np.exp((arr[j] - max_log) / tau)
+        arr[j] /= np.sum(arr[j])
+    return arr
+
+@njit
+def soft_max(arr):
+    for j in range(arr.shape[0]):
+        max_log = np.max(arr[j])
+        arr[j] = np.exp((arr[j] - max_log))
+        arr[j] /= np.sum(arr[j])
+    return arr
+
+
+@njit
 def logsumexp_inline(log_terms, n):
     max_log = -np.inf
     for i in range(n):
@@ -105,7 +122,7 @@ def logsumexp_inline(log_terms, n):
     return max_log + np.log(sum_exp)
 
 @njit(parallel=True)
-def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones):
+def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones, tau):
     q_z = np.zeros((n_cells, n_clones))
 
     for i in prange(n_cells):
@@ -126,10 +143,13 @@ def compute_q_z_sparse(cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells,
             q_z[i, r] = acc
 
         # Normalize to softmax
-        max_log = np.max(q_z[i])
-        q_z[i] = np.exp(q_z[i] - max_log)
-        q_z[i] /= np.sum(q_z[i])
-
+        # max_log = np.max(q_z[i])
+        # q_z[i] = np.exp(q_z[i] - max_log)
+        # q_z[i] /= np.sum(q_z[i])
+    if tau > 0:
+       q_z = soft_max_with_annealing(q_z, tau)
+    else:
+        q_z = soft_max(q_z)
     return q_z
 
 
@@ -152,7 +172,7 @@ def log_array(arr):
     return log_arr
 
 @njit(parallel=True)
-def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones):
+def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones, tau):
     q_y = np.zeros((n_snvs, n_clones-1))
 
     for j in prange(n_snvs):
@@ -173,10 +193,10 @@ def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, 
             q_y[j, p] = acc
 
 
-        # Normalize to softmax
-        max_log = np.max(q_y[j])
-        q_y[j] = np.exp(q_y[j] - max_log)
-        q_y[j] /= np.sum(q_y[j])
+        # # Normalize to softmax
+        # max_log = np.max(q_y[j])
+        # q_y[j] = np.exp(q_y[j] - max_log)
+        # q_y[j] /= np.sum(q_y[j])
     
     # for j in range(q_y.shape[0]):
     #     for p in range(q_y.shape[1]):
@@ -185,6 +205,10 @@ def compute_q_y_sparse(snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, 
     #     q_y[j] = np.exp(q_y[j] - max_log)
     #     q_y[j] /= np.sum(q_y[j])
 
+    if tau > 0:
+       q_y = soft_max_with_annealing(q_y, tau)
+    else:
+        q_y = soft_max(q_y)
     return q_y
 
 @njit(parallel=True)
@@ -350,7 +374,7 @@ def init_score(presence: np.ndarray,
 
     # Compute initial q_z and ELBO before any updates
     log_q_y = log_array(q_y_init)
-    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
+    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
     log_q_z = log_array(q_z)
     initial_likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
     kl_penalty = compute_kl_divergence(q_y_init, q_y_init)
@@ -376,9 +400,11 @@ def run(presence: np.ndarray,
         beta = 0.5,
         verbose=False):
 
+    tau_init = 1.0
+    tau_final = 0.1
     # Compute initial q_z and ELBO before any updates
     log_q_y = log_array(q_y_init)
-    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
+    q_z = compute_q_z_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
     log_q_z = log_array(q_z)
     initial_likelihood = compute_likelihood_sparse(cell_ptr, snv_idx, log_like_matrix_cell_sort, log_q_y, log_q_z, presence, n_clones, n_cells)
     kl_penalty = compute_kl_divergence(q_y_init, q_y_init)
@@ -396,8 +422,9 @@ def run(presence: np.ndarray,
     # print(psi.shape)
 
     for it in range(max_iter):
+        tau = tau_init * (tau_final / tau_init) ** (it / max_iter)
 
-        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones)
+        q_y = compute_q_y_sparse(snv_ptr, cell_idx, log_like_matrix_snv_sort, log_q_z, presence, n_snvs, n_clones, tau=0)
         new_psi = q_y.argmax(axis=1)
         # num_different  = (new_psi !=psi).sum()
         # perc_different = num_different/psi.shape[0]
@@ -405,7 +432,7 @@ def run(presence: np.ndarray,
         # print(f"Unique SNV clusters: {np.unique(psi).shape[0]}")
         log_q_y = log_array(q_y)
        
-        q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones)
+        q_z = compute_q_z_sparse(cell_ptr,snv_idx, log_like_matrix_cell_sort, log_q_y, presence, n_cells, n_clones, tau=0)
 
         log_q_z = log_array(q_z)
 
@@ -538,7 +565,9 @@ def rank_trees(tree_list: list,
     ]
 
 
-
+    alt_sum = read_counts.groupby("snv")["alt"].sum()
+    valid_snvs = alt_sum[alt_sum > 0].index
+    read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
 
 
     #appends columns log_absent and log_present to read_counts
