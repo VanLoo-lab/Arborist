@@ -1,6 +1,7 @@
 import pygraphviz as pgv
 from collections import defaultdict
 import itertools
+import pandas as pd
 
 
 def get_nodes(adj_list):
@@ -69,7 +70,7 @@ def get_descendants(tree_dict, node):
     return collect_descendants(node)
 
 
-def read_tree_edges_conipher(file_path):
+def read_tree_edges_conipher(file_path, sep=" "):
     """
     Reads tree edges from a file and organizes them into a list of trees.
 
@@ -129,7 +130,7 @@ def read_tree_edges_conipher(file_path):
                 continue
 
             # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
+            parts = line.split(sep)
             if len(parts) == 2:
                 current_tree.append((int(parts[0]), int(parts[1])))
 
@@ -139,7 +140,7 @@ def read_tree_edges_conipher(file_path):
     return trees
 
 
-def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
+def read_tree_edges_sapling(file_path, header_prefix="backbone tree", sep="\t"):
     """
     Reads tree edges from a file and organizes them into a list of trees.
 
@@ -204,7 +205,7 @@ def read_tree_edges_sapling(file_path, header_prefix="backbone tree"):
                 continue
 
             # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split()
+            parts = line.split(sep)
             if len(parts) == 2:
                 current_tree.append((int(parts[0]), int(parts[1])))
 
@@ -264,6 +265,51 @@ def visualize_tree(tree, cell_assignment=None, output_file=None):
 
     elif output_file.endswith(".png"):
         graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
+
+
+def ancestor_descendant_set(df):
+    ad_set = set()
+    for idx, row in df.iterrows():
+        u = row["clone"]
+        for v in row["descendants"]:
+            if u != v:
+                ad_set.add((u, v))
+    return ad_set
+
+
+def norm_ad_distance(ad1, ad2):
+    diff = ad1.symmetric_difference(ad2)
+    union = ad1.union(ad2)
+    return len(diff) / (len(union))
+
+
+def get_descendants_matrix(tree: list) -> pd.DataFrame:
+
+    parent_to_child = defaultdict(list)
+    for parent, child in tree:
+        parent_to_child[parent].append(child)
+
+    all_clones = set(parent_to_child.keys()).union(
+        set(child for children in parent_to_child.values() for child in children)
+    )
+
+    def dfs(node, tree):
+        descendants = []
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            for child in tree.get(current, []):
+                if child not in descendants:
+                    descendants.append(child)
+                    stack.append(child)
+        return [node] + descendants
+
+    evolution_matrix = pd.DataFrame(
+        [(clone, dfs(clone, parent_to_child)) for clone in all_clones],
+        columns=["clone", "descendants"],
+    )
+
+    return evolution_matrix
 
 
 # def parse_file(fname, sep_word="tree", nskip=0, sep="\t"):

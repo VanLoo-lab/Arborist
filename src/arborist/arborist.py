@@ -1,28 +1,26 @@
 import argparse
 import pandas as pd
 import numpy as np
+import numba
+from numba import njit, prange
 from scipy.stats import binom
-from scipy.special import logsumexp
 from collections import defaultdict
-from scipy.stats import entropy
-import pygraphviz as pgv
-from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
+from .utils import read_tree_edges_conipher, visualize_tree
+from .treefit import TreeFit
+import networkx as nx
+
+numba.set_num_threads(10)
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Tree ranking script")
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Arborist: a method to rank SNV clonal trees using scDNA-seq data.")
     parser.add_argument(
         "-R",
         "--read_counts",
         required=True,
-        help="Path to read counts CSV file with columns 'cell', 'cluster', 'total', 'alt'",
+        help="Path to read counts CSV file with columns 'snv', 'cell', 'cluster', 'total', 'alt'",
     )
-    parser.add_argument("-T", "--trees", required=True, help="Path to tree file")
-    parser.add_argument(
-        "--sapling",
-        action="store_true",
-        help="Use sapling format for tree edges, otherwise conipher format is assumed.",
-    )
+    parser.add_argument("-T", "--trees", required=True, help="Path to file containing all candidate trees to be ranked.")
     parser.add_argument(
         "--alpha",
         required=False,
@@ -31,23 +29,41 @@ def parse_arguments():
         help="Per base sequencing error",
     )
     parser.add_argument(
-        "--topn",
+        "--max-iter",
         required=False,
         type=int,
         default=25,
-        help="Filter only the top n trees, default is 25.",
+        help="max number of iterations.",
     )
     parser.add_argument(
         "--ranking",
         required=False,
         type=str,
-        help="Path to where tree ranking output should be saved",
+        help="Path to where tree ranking output should be saved.",
     )
     parser.add_argument(
         "--cell-assign",
         required=False,
         type=str,
-        help="Path to where cell assignments output should be saved",
+        help="Path to where cell assignments output should be saved.",
+    )
+    parser.add_argument(
+        "--snv-assign",
+        required=False,
+        type=str,
+        help="Path to where snv assignments output should be saved.",
+    )
+    parser.add_argument(
+        "--q_y",
+        required=False,
+        type=str,
+        help="Path to where the approximate SNV posterior should be saved",
+    )
+    parser.add_argument(
+        "--q_z",
+        required=False,
+        type=str,
+        help="Path to where the approximate cell posterior should be saved",
     )
     parser.add_argument(
         "-v", "--verbose", help="Print verbose output", action="store_true"
@@ -55,159 +71,761 @@ def parse_arguments():
     parser.add_argument(
         "-d", "--draw", required=False, type=str, help="Path to save the tree image"
     )
+    parser.add_argument(
+        "-t", "--tree", required=True, help="Path to save the top ranked tree file."
+    )
+    parser.add_argument(
+        "--prior",
+        required=False,
+        type=float,
+        default=0.7,
+        help="prior (gamma) on input SNV cluster assignment",
+    )
+    parser.add_argument("--map-assign", action="store_true")
+    parser.add_argument(
+        "--pickle",
+        type=str,
+        help="path to where all pickled tree fits should be saved.",
+    )
 
     return parser.parse_args()
 
-def run():
-    raise NotImplementedError
-    #initialize snv clusters 
-    #create the tree 
-    prev_likelihood = np.inf
-    while True:
-        tree_like = cell_assign = find_cell_assignments()
-        tree_like, snv_clusters = find_snv_clusters()
 
-        if np.abs(prev_likelihood - tree_like) <  0.01:
-            break
-    
-    return tree_like, cell_assign, snv_clusters
-
-
-
-
-def find_snv_clusters(read_counts, tree, cell_assignment):
-    raise NotImplementedError
-
-def find_cell_assignments(
-    read_counts, genotype_matrix, error_rate=0.001
-):
+@njit
+def soft_max(arr):
     """
-    Processes read counts and calculates probabilities for cell-to-clone assignments
-    based on a given evolutionary tree and error rate.
+    Applies the softmax function row-wise to a 2D array.
 
     Parameters
     ----------
-    read_counts : pandas.DataFrame
-        A DataFrame containing read count data with the following columns:
-        - 'cell': Identifier for the cell.
-        - 'cluster': Identifier for the cluster (clone).
-        - 'total': Total number of reads.
-        - 'alt': Number of alternate reads.
-    tree : list of tuple
-        A list of tuples representing the evolutionary tree. Each tuple is of the form
-        (parent, child), where `parent` and `child` are cluster identifiers.
-    error_rate : float, optional
-        The sequencing error rate, by default 0.001.
+    arr : np.ndarray
+        A 2D NumPy array.
+
+    Returns
+    -------
+    np.ndarray
+        The input array with softmax applied row-wise.
+    """
+    for j in range(arr.shape[0]):
+        max_log = np.max(arr[j])
+        arr[j] = np.exp((arr[j] - max_log))
+        arr[j] /= np.sum(arr[j])
+    return arr
+
+
+@njit
+def logsumexp_inline(log_terms, n):
+    """
+    Computes the log-sum-exp of an array for numerical stability.
+
+    Parameters
+    ----------
+    log_terms : np.ndarray
+        Array of log values.
+    n : int
+        Number of values to consider from log_terms.
+
+    Returns
+    -------
+    float
+        The log-sum-exp of the input values.
+    """
+    max_log = -np.inf
+    for i in range(n):
+        if log_terms[i] > max_log:
+            max_log = log_terms[i]
+    sum_exp = 0.0
+    for i in range(n):
+        sum_exp += np.exp(log_terms[i] - max_log)
+    return max_log + np.log(sum_exp)
+
+
+@njit(parallel=True)
+def compute_q_z_sparse(
+    cell_ptr, snv_idx, log_likes, log_q_y, presence, n_cells, n_clones
+):
+    """
+    Computes the variational posterior q(z_i = r) for each cell i and clone r.
+
+    Parameters
+    ----------
+    cell_ptr : np.ndarray
+        Pointer array for cell indexing in sparse representation.
+    snv_idx : np.ndarray
+        SNV indices corresponding to each observation.
+    log_likes : np.ndarray
+        Log-likelihoods for each observation (interleaved present/absent).
+    log_q_y : np.ndarray
+        Log of the current q(y) matrix (SNV x clone-1).
+    presence : np.ndarray
+        Presence/absence matrix for SNV clusters and clones.
+    n_cells : int
+        Number of cells.
+    n_clones : int
+        Number of clones.
+
+    Returns
+    -------
+    np.ndarray
+        Posterior cell assignment probabilities q_z (n_cells x n_clones).
+    """
+    q_z = np.zeros((n_cells, n_clones))
+
+    for i in prange(n_cells):
+        for r in range(n_clones):
+            acc = 0.0
+            for k in range(cell_ptr[i], cell_ptr[i + 1]):
+                log_present = log_likes[2 * k]
+                log_absent = log_likes[2 * k + 1]
+                j = snv_idx[k]
+
+                log_terms = np.empty(n_clones - 1)
+                for p in range(n_clones - 1):
+                    log_prob = log_present * presence[p, r] + log_absent * (
+                        1 - presence[p, r]
+                    )
+                    log_terms[p] = log_q_y[j, p] + log_prob
+
+                acc += logsumexp_inline(log_terms, n_clones - 1)
+
+            q_z[i, r] = acc
+
+    return soft_max(q_z)
+
+
+@njit
+def compute_entropy(q):
+    """
+    Computes the entropy of a probability distribution matrix.
+
+    Parameters
+    ----------
+    q : np.ndarray
+        Probability distribution matrix (e.g., q_z or q_y).
+
+    Returns
+    -------
+    float
+        The total entropy of the distribution.
+    """
+    ent = 0.0
+    for i in range(q.shape[0]):
+        for j in range(q.shape[1]):
+            if q[i, j] > 0:
+                ent -= q[i, j] * np.log(q[i, j] + 1e-12)
+    return ent
+
+
+@njit
+def compute_kl_divergence(q_y, q_y_init):
+    """
+    Computes the Kullback-Leibler (KL) divergence between two distributions.
+
+    Parameters
+    ----------
+    q_y : np.ndarray
+        Current variational posterior q(y).
+    q_y_init : np.ndarray
+        Initial/reference distribution q(y).
+
+    Returns
+    -------
+    float
+        KL divergence D_KL(q_y || q_y_init).
+    """
+    kl = 0.0
+    for j in range(q_y.shape[0]):
+        for p in range(q_y.shape[1]):
+            kl += q_y[j, p] * (
+                np.log(q_y[j, p] + 1e-12) - np.log(q_y_init[j, p] + 1e-12)
+            )
+    return kl
+
+
+@njit
+def log_array(arr):
+    """
+    Computes the element-wise logarithm of an array, assigning -inf where values are nonpositive.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array.
+
+    Returns
+    -------
+    np.ndarray
+        Array of the same shape as input, with log applied to positive entries and -inf elsewhere.
+    """
+    log_arr = np.full_like(arr, -np.inf)
+    for j in range(arr.shape[0]):
+        for p in range(arr.shape[1]):
+            if arr[j, p] > 0.0:
+                log_arr[j, p] = np.log(arr[j, p])
+    return log_arr
+
+
+@njit(parallel=True)
+def compute_q_y_sparse(
+    snv_ptr, cell_idx, log_likes, log_q_z, presence, n_snvs, n_clones, log_q_y_init
+):
+    """
+    Computes the variational posterior q(y_j = p) for each SNV j and cluster p.
+
+    Parameters
+    ----------
+    snv_ptr : np.ndarray
+        Pointer array for SNV indexing in sparse representation.
+    cell_idx : np.ndarray
+        Cell indices corresponding to each observation.
+    log_likes : np.ndarray
+        Log-likelihoods for each observation (interleaved present/absent).
+    log_q_z : np.ndarray
+        Log of the current q(z) matrix (cell x clone).
+    presence : np.ndarray
+        Presence/absence matrix for SNV clusters and clones.
+    n_snvs : int
+        Number of SNVs.
+    n_clones : int
+        Number of clones.
+    log_q_y_init : np.ndarray
+        Log of the initial/reference q(y) matrix.
+
+    Returns
+    -------
+    np.ndarray
+        Posterior SNV assignment probabilities q_y (n_snvs x (n_clones-1)).
+    """
+    q_y = np.zeros((n_snvs, n_clones - 1))
+
+    for j in prange(n_snvs):
+        for p in range(n_clones - 1):
+            acc = 0.0
+            for k in range(snv_ptr[j], snv_ptr[j + 1]):
+                log_present = log_likes[2 * k]
+                log_absent = log_likes[2 * k + 1]
+                i = cell_idx[k]
+
+                log_terms = np.empty(n_clones)
+                for r in range(n_clones):
+                    log_prob = log_present if presence[p, r] else log_absent
+                    log_terms[r] = log_q_z[i, r] + log_prob
+
+                acc += logsumexp_inline(log_terms, n_clones)
+
+            q_y[j, p] = acc + log_q_y_init[j, p]
+
+    return soft_max(q_y)
+
+
+@njit(parallel=True)
+def compute_likelihood_sparse(
+    cell_ptr, snv_idx, log_likes, log_q_y, log_q_z, presence, n_clones, n_cells
+):
+    """
+    Computes the expected log-likelihood under the current variational distributions.
+
+    Parameters
+    ----------
+    cell_ptr : np.ndarray
+        Pointer array for cell indexing in sparse representation.
+    snv_idx : np.ndarray
+        SNV indices corresponding to each observation.
+    log_likes : np.ndarray
+        Log-likelihoods for each observation (interleaved present/absent).
+    log_q_y : np.ndarray
+        Log of the current q(y) matrix (SNV x cluster).
+    log_q_z : np.ndarray
+        Log of the current q(z) matrix (cell x clone).
+    presence : np.ndarray
+        Binary presence/absence matrix for SNV clusters and clones.
+    n_clones : int
+        Number of clones.
+    n_cells : int
+        Number of cells.
+
+    Returns
+    -------
+    float
+        The expected log-likelihood of the data under the variational distributions.
+    """
+    expected_log_likelihood = 0.0
+    for i in prange(n_cells):
+        for k in range(cell_ptr[i], cell_ptr[i + 1]):
+            log_present = log_likes[2 * k]
+            log_absent = log_likes[2 * k + 1]
+            j = snv_idx[k]
+            for r in range(n_clones):
+                for p in range(n_clones - 1):
+                    log_w = log_q_z[i, r] + log_q_y[j, p]
+                    log_prob = log_present if presence[p, r] else log_absent
+                    expected_log_likelihood += np.exp(log_w) * log_prob
+    return expected_log_likelihood
+
+
+def build_index_pointers(index_array, alt_idx, n, log_like_matrix):
+    """
+    Builds a pointer array for sparse COO representation.
+
+    Parameters
+    ----------
+    index_array : np.ndarray
+        Array of indices (e.g., cell or SNV indices).
+    alt_idx : np.ndarray
+        Second index array to be sorted accordingly.
+    n : int
+        Number of unique indices (cells or SNVs).
+    log_like_matrix : np.ndarray
+        Array of log-likelihoods (flattened).
 
     Returns
     -------
     tuple
-        A tuple containing:
-        - product : float
-            The sum of the maximum log-likelihoods for each cell.
-        - Cell_assignment : pandas.DataFrame
-            A DataFrame where rows correspond to cells and columns correspond to clones.
-            Each entry represents the log-likelihood of the cell being assigned to the clone.
-
-    Notes
-    -----
-    - The function calculates the likelihood of each cell being assigned to each clone
-      based on the evolutionary tree and read counts.
-    - The probabilities for mutation and non-mutation are derived from the error rate.
-    - The binomial log probability mass function is used to compute log-likelihoods.
-
-    Examples
-    --------
-    >>> read_counts = pd.DataFrame({
-    ...     'cell': ['cell1', 'cell1', 'cell2'],
-    ...     'cluster': [1, 2, 1],
-    ...     'total': [100, 150, 120],
-    ...     'alt': [10, 15, 12]
-    ... })
-    >>> tree = [(0, 1), (1, 2)]
-    >>> product, Cell_assignment = process_read_counts_and_calculate_probabilities(read_counts, tree)
-    >>> print(product)
-    >>> print(Cell_assignment)
+        (pointer array, sorted index array, sorted alt_idx, sorted log_like_matrix)
     """
+    counts = np.zeros(n + 1, dtype=np.int32)
+    for idx in index_array:
+        counts[idx + 1] += 1
+    for i in range(1, n + 1):
+        counts[i] += counts[i - 1]
+    sort_idx = np.argsort(index_array)
+
+    index_array = index_array[sort_idx]
+    alt_idx = alt_idx[sort_idx]
+    n_obs = sort_idx.shape[0]
+    ll_mat = log_like_matrix.reshape(n_obs, 2)  # each row = [log_present, log_absent]
+    ll_mat = ll_mat[sort_idx]  # apply same permutation
+    log_like_matrix = ll_mat.ravel()
+    return counts, index_array, alt_idx, log_like_matrix
 
 
-    # filter out any clusters that are not in the tree.
-    filtered_read_counts = read_counts[
-        read_counts["cluster"].isin(genotype_matrix["Child"])
-    ]
-    cell_reads = defaultdict(lambda: defaultdict(list))
-    for _, row in filtered_read_counts.iterrows():
-        cell_reads[row["cell"]][row["cluster"]].append((row["total"], row["alt"]))
+def build_sparse_input(df, cell_to_idx, snv_to_idx):
+    """
+    Converts (cell, snv) log likelihood DataFrame into sparse COO-style NumPy arrays.
 
-    clones = genotype_matrix["Child"].values
-    cells = list(cell_reads.keys())
-    Cell_assignment = pd.DataFrame(index=cells, columns=clones, dtype=float)
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with columns 'cell', 'snv', 'log_present', 'log_absent'.
+    cell_to_idx : dict
+        Mapping from cell identifiers to indices.
+    snv_to_idx : dict
+        Mapping from SNV identifiers to indices.
 
-    p_mutated = 0.5 - error_rate + 0.5 * error_rate / 3
-    p_not_mutated = error_rate / 3
+    Returns
+    -------
+    tuple
+        (cell_idx, snv_idx, log_matrix) where log_matrix contains interleaved log_present/log_absent.
+    """
+    n = df.shape[0]
+    cell_idx = np.zeros(n, dtype=np.int32)
+    snv_idx = np.zeros(n, dtype=np.int32)
+    log_matrix = np.zeros(2 * n, dtype=np.float64)
 
-    for cell in cells:
-        log_likelihoods = np.zeros(len(clones))
-        reads = cell_reads[cell]
+    for i, row in enumerate(df.itertuples(index=False)):
+        cell_idx[i] = cell_to_idx[row.cell]
+        snv_idx[i] = snv_to_idx[row.snv]
+        log_matrix[2 * i] = row.log_present
+        log_matrix[2 * i + 1] = row.log_absent
 
-        for clone_idx, clone in enumerate(clones):
-            ancestor_value = genotype_matrix.loc[
-                genotype_matrix["Child"] == clone, "Ancestors"
-            ].values[0]
-            cluster_numbers = set(map(int, ancestor_value.split(",")))
+    return cell_idx, snv_idx, log_matrix
 
-            total_reads_arr, variant_reads_arr, p_arr = [], [], []
-            for cluster, read_data in reads.items():
-                data = np.array(read_data, dtype=int)
-                total_reads, variant_reads = data[:, 0], data[:, 1]
-                p = p_mutated if int(cluster) in cluster_numbers else p_not_mutated
-                total_reads_arr.extend(total_reads)
-                variant_reads_arr.extend(variant_reads)
-                p_arr.extend([p] * len(total_reads))
 
-            if total_reads_arr:
-                log_likelihoods[clone_idx] = np.sum(
-                    binom.logpmf(variant_reads_arr, total_reads_arr, p_arr)
-                )
+def enumerate_presence(tree: list, clones: list, clusters: list) -> np.array:
+    """
+    Enumerates the presence of each clone in the genotype matrix.
 
-        Cell_assignment.loc[cell, :] = log_likelihoods
+    Parameters
+    ----------
+    tree : list
+        List of edges representing the tree (as (parent, child) tuples).
+    clones : list
+        List of clone identifiers.
+    clusters : list
+        List of cluster identifiers (subset of clones).
 
-    product = np.sum(Cell_assignment.max(axis=1))
-    return product, Cell_assignment
+    Returns
+    -------
+    np.ndarray
+        Presence matrix of shape (n_clusters, n_clones), where entry [p, r] is 1 if clone r is a descendant of cluster p.
+    """
+    T = nx.DiGraph(tree)
+    n_clones = len(clones)
+    n_clusters = len(clusters)
+    presence = np.zeros((n_clusters, n_clones), dtype=int)
+    clone_to_idx = {r: i for i, r in enumerate(clones)}
 
-def build_genotypes(tree):
-    child_to_parent = {child: parent for parent, child in tree}
-    all_clones = set(child_to_parent.keys()).union(set(child_to_parent.values()))
+    for p, cluster_p in enumerate(clusters):
+        desc = nx.descendants(T, cluster_p) | {cluster_p}
+        for d in desc:
+            presence[p, clone_to_idx[d]] = 1
 
-    def get_ancestors(child):
-        ancestors = []
-        while child in child_to_parent:
-            ancestors.append(child)
-            child = child_to_parent[child]
-        ancestors.append(child)
-        return ",".join(map(str, ancestors[::-1]))
+    return presence
 
-    evolution_matrix = pd.DataFrame(
-        [
-            (clone, get_ancestors(clone) if clone in child_to_parent else str(clone))
-            for clone in all_clones
-        ],
-        columns=["Child", "Ancestors"],
+
+def initialize_q_y(
+    read_counts: pd.DataFrame, clusters: list, snv_to_idx: dict, gamma: float
+) -> np.ndarray:
+    """
+    Initialize the variational posterior q(y_j = p) for each SNV j and cluster p.
+
+    Parameters
+    ----------
+    read_counts : pd.DataFrame
+        Must have columns 'snv' and 'cluster', where 'cluster' is the
+        initial hard assignment ψ(snv) in [clusters].
+    clusters : list
+        List of cluster identifiers (length k).
+    snv_to_idx : dict
+        Mapping from SNV identifiers to row indices 0..m-1 in the output array.
+    gamma : float
+        Probability mass assigned to the initial cluster assignment.
+
+    Returns
+    -------
+    np.ndarray
+        q_y[j, p] = gamma if ψ(j) == p else (1-gamma)/(k-1).
+    """
+    # Build a quick map: snv -> its hard cluster
+    cluster_map = dict(zip(read_counts["snv"], read_counts["cluster"]))
+    m, k = len(cluster_map), len(clusters)
+    q_y = np.zeros((m, k), dtype=np.float64)
+
+    # Epsilon mass on correct cluster; uniform remainder
+    other = (1 - gamma) / (k - 2) if k > 1 else 0.0
+
+    for snv, assigned in cluster_map.items():
+        j = snv_to_idx[snv]
+        for p_idx, clone_id in enumerate(clusters):
+            q_y[j, p_idx] = gamma if (assigned == clone_id) else other
+
+    return q_y
+
+
+@njit
+def hard_assign_q(q_dist: np.ndarray):
+    """
+    Computes the hard assignment (MAP) for a probability distribution matrix.
+
+    Parameters
+    ----------
+    q_dist : np.ndarray
+        Probability distribution matrix (e.g., q_z or q_y).
+
+    Returns
+    -------
+    np.ndarray
+        Hard assignment matrix of the same shape as q_dist, with 1 at the MAP assignment per row and 0 elsewhere.
+    """
+    q_hard = np.zeros(q_dist.shape)
+    assign = q_dist.argmax(axis=1)
+    for i in range(q_dist.shape[0]):
+        for q in range(q_dist.shape[1]):
+            if assign[i] == q:
+                q_hard[i, q] = 1.0
+            else:
+                q_hard[i, q] = 0.0
+    return q_hard
+
+
+@njit
+def run_simple_max_likelihood(
+    presence: np.ndarray,
+    log_like_matrix_cell_sort: np.ndarray,
+    log_like_matrix_snv_sort: np.ndarray,
+    cell_idx: np.ndarray,
+    snv_idx: np.ndarray,
+    n_cells: int,
+    n_snvs: int,
+    n_clones: int,
+    q_y_init: np.ndarray,
+    cell_ptr: np.ndarray,
+    snv_ptr: np.ndarray,
+    max_iter=10,
+    tolerance=1,
+):
+    """
+    Runs a single round of MAP assignment for cells and SNVs (no variational updates).
+
+    Parameters
+    ----------
+    presence : np.ndarray
+        Presence/absence matrix for SNV clusters and clones.
+    log_like_matrix_cell_sort : np.ndarray
+        Log-likelihoods sorted by cell.
+    log_like_matrix_snv_sort : np.ndarray
+        Log-likelihoods sorted by SNV.
+    cell_idx : np.ndarray
+        Cell indices for SNV-sorted data.
+    snv_idx : np.ndarray
+        SNV indices for cell-sorted data.
+    n_cells : int
+        Number of cells.
+    n_snvs : int
+        Number of SNVs.
+    n_clones : int
+        Number of clones.
+    q_y_init : np.ndarray
+        Initial q(y) matrix.
+    cell_ptr : np.ndarray
+        Pointer array for cell indexing.
+    snv_ptr : np.ndarray
+        Pointer array for SNV indexing.
+    max_iter : int, optional
+        Not used (for API compatibility).
+    tolerance : float, optional
+        Not used (for API compatibility).
+
+    Returns
+    -------
+    tuple
+        (likelihood, q_z, q_y_hard)
+    """
+    # Compute initial q_z and ELBO before any updates
+    q_y_hard = hard_assign_q(q_y_init)
+    log_q_y_init = log_array(q_y_hard)
+
+    q_z = compute_q_z_sparse(
+        cell_ptr,
+        snv_idx,
+        log_like_matrix_cell_sort,
+        log_q_y_init,
+        presence,
+        n_cells,
+        n_clones,
     )
-    return evolution_matrix
+    q_z_hard = hard_assign_q(q_z)
+    log_q_z = log_array(q_z_hard)
+    likelihood = compute_likelihood_sparse(
+        cell_ptr,
+        snv_idx,
+        log_like_matrix_cell_sort,
+        log_q_y_init,
+        log_q_z,
+        presence,
+        n_clones,
+        n_cells,
+    )
+    return likelihood, q_z, q_y_hard
 
-def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
+
+@njit
+def run_variational_inference(
+    presence: np.ndarray,
+    log_like_matrix_cell_sort: np.ndarray,
+    log_like_matrix_snv_sort: np.ndarray,
+    cell_idx: np.ndarray,
+    snv_idx: np.ndarray,
+    n_cells: int,
+    n_snvs: int,
+    n_clones: int,
+    q_y_init: np.ndarray,
+    cell_ptr: np.ndarray,
+    snv_ptr: np.ndarray,
+    max_iter=10,
+    tolerance=1,
+):
     """
-    Rank SNV phylogenetic trees based on their likelihood given scDNA-seq read count data and calculate entropy for cell assignments.
-    This function processes a list of phylogenetic trees and their associated read counts to calculate
-    the likelihood of each tree. After ranking, it selects the top `topn` trees,
-    and computes entropy for cell assignments based on the selected trees.
+    Runs coordinate ascent variational inference for cell and SNV assignments.
+
+    Parameters
+    ----------
+    presence : np.ndarray
+        Presence/absence matrix for SNV clusters and clones.
+    log_like_matrix_cell_sort : np.ndarray
+        Log-likelihoods sorted by cell.
+    log_like_matrix_snv_sort : np.ndarray
+        Log-likelihoods sorted by SNV.
+    cell_idx : np.ndarray
+        Cell indices for SNV-sorted data.
+    snv_idx : np.ndarray
+        SNV indices for cell-sorted data.
+    n_cells : int
+        Number of cells.
+    n_snvs : int
+        Number of SNVs.
+    n_clones : int
+        Number of clones.
+    q_y_init : np.ndarray
+        Initial/reference q(y) matrix.
+    cell_ptr : np.ndarray
+        Pointer array for cell indexing.
+    snv_ptr : np.ndarray
+        Pointer array for SNV indexing.
+    max_iter : int, optional
+        Maximum number of coordinate ascent iterations.
+    tolerance : float, optional
+        Convergence tolerance for ELBO.
+
+    Returns
+    -------
+    tuple
+        (best_elbo, best_q_z, best_q_y)
+    """
+    # Compute initial q_z and ELBO before any updates
+    log_q_y_init = log_array(q_y_init)
+    log_q_y = log_q_y_init.copy()
+    q_z = compute_q_z_sparse(
+        cell_ptr,
+        snv_idx,
+        log_like_matrix_cell_sort,
+        log_q_y,
+        presence,
+        n_cells,
+        n_clones,
+    )
+    log_q_z = log_array(q_z)
+    initial_likelihood = compute_likelihood_sparse(
+        cell_ptr,
+        snv_idx,
+        log_like_matrix_cell_sort,
+        log_q_y,
+        log_q_z,
+        presence,
+        n_clones,
+        n_cells,
+    )
+    best_elbo = (
+        initial_likelihood
+        + compute_entropy(q_z)
+        - compute_kl_divergence(q_y_init, q_y_init)
+    )
+
+    # Initialize best values to initial state
+    best_q_z = q_z.copy()
+    best_q_y = q_y_init.copy()
+
+    converged = False
+
+    for it in range(max_iter):
+        q_y = compute_q_y_sparse(
+            snv_ptr,
+            cell_idx,
+            log_like_matrix_snv_sort,
+            log_q_z,
+            presence,
+            n_snvs,
+            n_clones,
+            log_q_y_init,
+        )
+        log_q_y = log_array(q_y)
+
+        q_z = compute_q_z_sparse(
+            cell_ptr,
+            snv_idx,
+            log_like_matrix_cell_sort,
+            log_q_y,
+            presence,
+            n_cells,
+            n_clones,
+        )
+        log_q_z = log_array(q_z)
+
+        likelihood = compute_likelihood_sparse(
+            cell_ptr,
+            snv_idx,
+            log_like_matrix_cell_sort,
+            log_q_y,
+            log_q_z,
+            presence,
+            n_clones,
+            n_cells,
+        )
+        kl_penalty = compute_kl_divergence(q_y, q_y_init)
+        cell_entropy = compute_entropy(q_z)
+        elbo = likelihood + cell_entropy - kl_penalty
+
+        if np.abs(elbo - best_elbo) < tolerance:
+            converged = True
+
+        if elbo > best_elbo:
+            best_q_z = q_z.copy()
+            best_q_y = q_y.copy()
+            best_elbo = elbo
+
+        if converged:
+            break
+
+    return best_elbo, best_q_z, best_q_y
+
+
+def precompute_log_likelihoods(
+    read_counts: pd.DataFrame, error_rate=0.001
+) -> pd.DataFrame:
+    """
+    Preprocesses the read counts by precomputing the log probabilities.
+
+    Parameters
+    ----------
+    read_counts : pd.DataFrame
+        DataFrame with columns 'cell', 'snv', 'alt', 'total', etc.
+    error_rate : float, optional
+        Per-base sequencing error rate (default is 0.001).
+
+    Returns
+    -------
+    tuple
+        (read_counts_with_logs, cell_to_idx, snv_to_idx)
+    """
+    read_counts["log_absent"] = binom.logpmf(
+        read_counts["alt"], read_counts["total"], error_rate / 3
+    )
+    read_counts["log_present"] = binom.logpmf(
+        read_counts["alt"],
+        read_counts["total"],
+        0.5 - error_rate + 0.5 * error_rate / 3,
+    )
+
+    cells = read_counts["cell"].unique()
+    snvs = read_counts["snv"].unique()
+
+    cell_to_idx = {cell: idx for idx, cell in enumerate(cells)}
+    snv_to_idx = {snv: idx for idx, snv in enumerate(snvs)}
+
+    return read_counts, cell_to_idx, snv_to_idx
+
+
+def tree_to_clone_set(tree: list) -> list:
+    """
+    Extracts the set of unique clones from a tree edge list.
+
+    Parameters
+    ----------
+    tree : list
+        List of edges (parent, child) tuples.
+
+    Returns
+    -------
+    set
+        Set of unique clone identifiers in the tree.
+    """
+    clones = set()
+    for u, v in tree:
+        clones.add(u)
+        clones.add(v)
+    return clones
+
+
+def rank_trees(
+    tree_list: list,
+    read_counts: pd.DataFrame,
+    alpha: float = 0.001,
+    max_iter: int = 10,
+    tolerance: float = 1,
+    gamma=0.7,
+    update_snvs=True,
+    verbose: bool = False,
+) -> tuple:
+    """
+    Rank SNV phylogenetic trees based on evidence lower bound given scDNA-seq read count data.
+    This function processes a list of clonal trees and their associated read counts to calculate
+    the likelihood of each tree.
     Parameters
     ----------
     tree_list : list
         A list of phylogenetic trees to be ranked.
     read_counts : pandas.DataFrame
-        A DataFrame containing read counts for each cell.
+        A DataFrame containing columns ["snv", "cell", "alt", "total", "cluster"]
     alpha : float, optional
         The per-base sequencing error rate for computing the likelihood of the tree given the read counts (default is 0.001).
     topn : int, optional
@@ -226,88 +844,116 @@ def rank_trees(tree_list, read_counts, alpha=0.001, topn=None, verbose=False):
     - Entropy is calculated for each cell and each tree based on the posterior probabilities of assignment to each clones.
     Examples
     --------
-    >>> ranked_trees, filtered_assignments, Entropy = rank_trees(tree_list, read_counts, alpha=0.001, topn=25)
-    >>> print(ranked_trees.head())
-    >>> print(filtered_assignments.head())
-    >>> print(Entropy.head())
+    >>> ranked_trees, filtered_assignments, all_fits = rank_trees(tree_list, read_counts, alpha=0.001)
+
     """
 
-    tree_probabilities = []
-    combined_outputs = []
+    tree = tree_list[0]
+    clone_set = tree_to_clone_set(tree)
+    for tree in tree_list:
+        if tree_to_clone_set(tree) != clone_set:
+            raise ValueError("All trees must have the same set of clones.")
 
-    for idx, tree in enumerate(tree_list):
-        genotype_matrix = build_genotypes(tree)
-        raw_probability, Cell_assignment_df = (
-            find_cell_assignments(read_counts, genotype_matrix, alpha)
-        )
+    clones = list(clone_set)
+    clusters = [c for c in clones if c != -1]
+    # Filter read_counts to only include cells and SNVs present in the tree
+    read_counts = read_counts[read_counts["cluster"].isin(clones)]
 
-        # Extract actual node labels from the tree (not "Clone_X" format)
-        clone_labels = Cell_assignment_df.columns.tolist()
-        assigned_clones = Cell_assignment_df.select_dtypes(include=[np.number]).idxmax(
-            axis=1
-        )
+    alt_sum = read_counts.groupby("snv")["alt"].sum()
+    valid_snvs = alt_sum[alt_sum > 0].index
+    read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
 
-        clone_labels = [f"clone_{x}_posterior" for x in clone_labels]
-        Cell_assignment_df.columns = clone_labels
-
-        # Assign each cell to the most probable clone
-        Cell_assignment_df["clone"] = assigned_clones
-        Cell_assignment_df["tree"] = idx  # Use direct tree index (0, 1, …)
-        Cell_assignment_df["likelihood"] = raw_probability
-        combined_outputs.append(Cell_assignment_df.reset_index())
-
-        tree_probabilities.append({"tree": idx, "likelihood": raw_probability})
-
-        if verbose:
-            print(f"Processed tree {idx} with likelihood {raw_probability}.")
-
-    if verbose:
-        print(f"Processed {len(tree_list)} trees.")
-        print("Writing output to disk...")
-
-    # Create a DataFrame of tree probabilities
-    df = pd.DataFrame(tree_probabilities)
-
-    # Normalize probabilities
-    logsum = logsumexp(df["likelihood"])
-    df["posterior"] = np.exp(df["likelihood"] - logsum) * 100
-
-    # Rank trees by likelihood
-    df.sort_values(by=["likelihood"], ascending=False, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-
-    # Select top `topn` ranked trees
-    ranked_trees = df.iloc[:topn]
-
-    # Filter Cell_assignment_df to include only top-ranked trees
-    filtered_assignments = pd.concat(combined_outputs, ignore_index=True)
-    filtered_assignments = filtered_assignments[
-        filtered_assignments["tree"].isin(ranked_trees["tree"])
-    ]
-
-    # Compute posterior probabilities
-    posterior_probs = np.exp(
-        filtered_assignments[clone_labels]
-        - logsumexp(filtered_assignments[clone_labels], axis=1, keepdims=True)
+    # appends columns log_absent and log_present to read_counts
+    read_counts, cell_to_idx, snv_to_idx = precompute_log_likelihoods(
+        read_counts, alpha
+    )
+    q_y_init = initialize_q_y(read_counts, clusters, snv_to_idx, gamma)
+    cell_idx, snv_idx, log_like_matrix = build_sparse_input(
+        read_counts, cell_to_idx, snv_to_idx
     )
 
-    # Compute entropy
-    entropy_values = posterior_probs.apply(lambda row: entropy(row, base=2), axis=1)
+    n_cells = len(cell_to_idx)
+    n_snvs = len(snv_to_idx)
+    n_clones = len(clones)
+    # cell_ptr, cell_sort_idx = build_index_pointers(cell_idx, snv_idx, n_cells)
+    cell_ptr, cell_idx_sort, snv_index_cell_sort, log_like_matrix_cell_sort = (
+        build_index_pointers(
+            cell_idx, snv_idx, n_cells, log_like_matrix=log_like_matrix
+        )
+    )
+    snv_ptr, snv_idx_sort, cell_index_snv_sort, log_like_matrix_snv_sort = (
+        build_index_pointers(snv_idx, cell_idx, n_snvs, log_like_matrix=log_like_matrix)
+    )
 
-    # Create a single output DataFrame
-    cell_assignments = pd.DataFrame()
-    cell_assignments["cell"] = filtered_assignments["index"]  # Use original cell labels
-    cell_assignments["tree"] = filtered_assignments["tree"]  # Use tree index directly
-    cell_assignments["clone"] = filtered_assignments[
-        "clone"
-    ]  # Use actual node label from the tree
-    cell_assignments["entropy"] = entropy_values
 
-    # Rename posterior probability columns to actual clone labels
-    posterior_probs.columns = clone_labels
-    cell_assignments = pd.concat([cell_assignments, posterior_probs], axis=1)
 
-    return ranked_trees, cell_assignments
+    best_likelihood = -np.inf
+    likelihoods = {}
+
+    all_tree_fits = {}
+
+    if update_snvs:
+        if verbose:
+            print("Running Arborist in full variational inference mode...")
+        run = run_variational_inference
+    else:
+        print("Running Arborist in cell MAP assignment mode....")
+        run = run_simple_max_likelihood
+
+     
+    for idx, tree in enumerate(tree_list):
+
+        """
+        # Main function to find cell assignments
+        raw_probability, Cell_assignment_df = (
+            run(genotype_matrix, read_counts, alpha, verbose)
+            find_cell_assignments(read_counts, genotype_matrix, alpha)
+        )
+        """
+
+        if verbose:
+            print(f"Starting tree {idx}...")
+
+
+
+        presence = enumerate_presence(tree, clones, clusters)
+      
+
+        expected_log_like, q_z, q_y = run(
+            presence,
+            log_like_matrix_cell_sort,
+            log_like_matrix_snv_sort,
+            cell_idx=cell_index_snv_sort,
+            snv_idx=snv_index_cell_sort,
+            n_cells=n_cells,
+            n_snvs=n_snvs,
+            n_clones=n_clones,
+            q_y_init=q_y_init,
+            cell_ptr=cell_ptr,
+            snv_ptr=snv_ptr,
+            max_iter=max_iter,
+            tolerance=tolerance,
+        )
+
+        tfit = TreeFit(
+            tree_list[idx],
+            idx,
+            expected_log_like,
+            q_z,
+            q_y,
+            cell_to_idx,
+            snv_to_idx,
+            clones,
+        )
+        all_tree_fits[idx] = tfit
+        if verbose:
+            print(f"Tree {idx} fit wtih ELBO: {expected_log_like}")
+        likelihoods[idx] = expected_log_like
+        if expected_log_like > best_likelihood:
+            best_fit = tfit
+            best_likelihood = expected_log_like
+
+    return likelihoods, best_fit, all_tree_fits
 
 
 def main():
@@ -316,31 +962,47 @@ def main():
 
     read_trees = read_tree_edges_conipher
 
-    if args.sapling:
-        read_trees = read_tree_edges_sapling
+    candidate_trees = read_trees(args.trees, sep=",")
 
-    candidate_trees = read_trees(args.trees)
-    ranked_trees, cell_assignments = rank_trees(
+    elbos, tfit, all_fits = rank_trees(
         candidate_trees,
         read_counts,
         alpha=args.alpha,
-        topn=args.topn,
         verbose=args.verbose,
+        max_iter=args.max_iter,
+        gamma=args.prior,
+        update_snvs=not args.map_assign,
     )
 
-    tree_idx = ranked_trees["tree"].tolist()[0]
     if args.draw:
 
-        best_tree = cell_assignments[cell_assignments["tree"] == tree_idx]
-        cell_assign = dict(zip(best_tree["cell"], best_tree["clone"]))
         visualize_tree(
-            candidate_trees[tree_idx],
-            cell_assignment=cell_assign,
+            tfit.tree,
             output_file=args.draw,
         )
 
-    # Save results
+    cell_assign = tfit.map_assign_z()
+    snv_assign = tfit.map_assign_y()
+
+    elbo_df = pd.DataFrame.from_dict(elbos, orient="index", columns=["elbo"])
+    elbo_df = elbo_df.reset_index().rename(columns={"index": "tree_idx"})
+    elbo_df = elbo_df.sort_values(by="elbo", ascending=False)
+
+    # # Save results
     if args.ranking:
-        ranked_trees.to_csv(args.ranking, index=False)
+        elbo_df.to_csv(args.ranking, index=False)
+
     if args.cell_assign:
-        cell_assignments.to_csv(args.cell_assign, index=False)
+        cell_assign.to_csv(args.cell_assign, index=False)
+    if args.snv_assign:
+        snv_assign.to_csv(args.snv_assign, index=False)
+    if args.q_z:
+        tfit.q_z_df().to_csv(args.q_z, index=False)
+    if args.q_y:
+        tfit.q_y_df().to_csv(args.q_y, index=False)
+
+    if args.tree:
+        tfit.save_tree(args.tree)
+
+    if args.pickle:
+        pd.to_pickle(all_fits, args.pickle)
