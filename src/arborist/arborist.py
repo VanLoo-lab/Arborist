@@ -338,7 +338,7 @@ def compute_likelihood_sparse(
     log_q_z : np.ndarray
         Log of the current q(z) matrix (cell x clone).
     presence : np.ndarray
-        Presence/absence matrix for SNV clusters and clones.
+        Binary presence/absence matrix for SNV clusters and clones.
     n_clones : int
         Number of clones.
     n_cells : int
