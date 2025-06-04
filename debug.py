@@ -1,5 +1,4 @@
 import simit.simulator as sim
-from arborist.arborist_pandas import rank_trees_pandas
 from arborist.arborist import rank_trees
 
 

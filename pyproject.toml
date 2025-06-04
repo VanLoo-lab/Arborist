@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "A tool to rank SNV phylogenies inferred from bulk DNA sequencing via low-pass scDNA-seq data."
 authors = [
     { name = "Leah L. Weber", email = "llweber@mdanderson.org" },
-    { name = "Chiyin Ching", email = "CChing@mdanderson.org"}
+    { name = "Chiyin Ching", email = "CChing@mdanderson.org"},
+    { name = "Chritopher Ly", email = "CLy2@mdanderson.org"}
   
 ]
 license = { text = "BSD-3-Clause" } 
@@ -24,7 +25,9 @@ dependencies = [
     "numpy",
     "scipy",
     "pandas",
-    "pygraphviz"
+    "pygraphviz",
+    "numba",
+    "networkx"
 ]
 
 [tool.setuptools.packages.find]
