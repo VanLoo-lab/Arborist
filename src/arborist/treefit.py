@@ -1,27 +1,27 @@
 from dataclasses import dataclass
 import pandas as pd
-import numpy as np 
+import numpy as np
 import pygraphviz as pgv
-from collections  import defaultdict
+from collections import defaultdict
+
 
 @dataclass
 class TreeFit:
     """
     Solution class to hold the solution to a tree
     """
-    tree: list 
-    tree_idx: int 
+
+    tree: list
+    tree_idx: int
     elbo: float
     q_z: np.ndarray
     q_y: np.ndarray
     cell_to_idx: dict
     snv_to_idx: dict
     clones: list
- 
-    
+
     def __str__(self):
         return f"{self.tree_idx}: {self.elbo}"
-    
 
     def convert_q_to_dataframe(self, q, my_dict):
         """
@@ -33,20 +33,19 @@ class TreeFit:
         df.reset_index(inplace=True)
         label_dict = {val: key for key, val in my_dict.items()}
         df["id"] = df["id"].map(label_dict)
-  
-        return df 
-    
+
+        return df
+
     def q_z_df(self):
         df = self.convert_q_to_dataframe(self.q_z, self.cell_to_idx)
 
-        
-        return df 
-    
+        return df
+
     def q_y_df(self):
         df = self.convert_q_to_dataframe(self.q_y, self.snv_to_idx)
 
-        return df 
-    
+        return df
+
     def __repr__(self):
         return f"TreeFit(tree={self.tree}, tree_idx={self.tree_idx}, expected_log_likelihood={self.elbo})"
 
@@ -61,30 +60,29 @@ class TreeFit:
         q_df.reset_index(inplace=True)
         label_dict = {val: key for key, val in mydict.items()}
         q_df["id"] = q_df["id"].map(label_dict)
-        
-     
-        return q_df 
-    
+
+        return q_df
+
     def map_assign_z(self):
         """
         assigns cell to the maximum a posteriori (MAP) clone
         """
         return self.map_assign(self.q_z, self.cell_to_idx)
-    
+
     def map_assign_y(self):
         """
         assigns snvs to the maximum a posteriori (MAP) cluster
         """
         return self.map_assign(self.q_y, self.snv_to_idx)
-    
-    def save_tree(self,fname):
-        pass 
+
+    def save_tree(self, fname):
+        pass
         with open(fname, "w+") as file:
             file.write("# tree\n")
-            for u,v in self.tree:
+            for u, v in self.tree:
                 file.write(f"{u},{v}\n")
-    
-    def visualize_tree(self,  include_scores=False, output_file=None):
+
+    def visualize_tree(self, include_scores=False, output_file=None):
         """
         Visualizes a tree using Graphviz.
 
@@ -106,14 +104,13 @@ class TreeFit:
 
         if include_scores:
             cs = self.clade_score()
-        
 
             for parent, child in self.tree:
                 labels[parent] = f"{parent}\nscore: {cs[parent]:.3f}"
-                labels[child]  = f"{child}\nscore: {cs[child]:.3f}"
+                labels[child] = f"{child}\nscore: {cs[child]:.3f}"
         else:
             for parent, child in self.tree:
-                labels[parent] =f"{parent}"
+                labels[parent] = f"{parent}"
                 labels[child] = f"{child}"
 
         # if cell_assignment:
@@ -131,29 +128,22 @@ class TreeFit:
             graph.add_node(parent, shape="circle", label=labels[parent])
             graph.add_node(child, shape="circle", label=labels[child])
             graph.add_edge(parent, child)
-        
+
         if output_file.endswith(".dot"):
             graph.write(output_file)  # Save as a DOT file
 
         elif output_file.endswith(".png"):
             graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
-    
 
     def compute_hz(self, eps=1e-12):
-  
 
-        h_z = -np.sum(self.q_z * np.log(self.q_z + eps), axis=1) / self.q_z.shape[1]  
+        h_z = -np.sum(self.q_z * np.log(self.q_z + eps), axis=1) / self.q_z.shape[1]
         return h_z
 
-
-
-        
     def compute_hy(self, eps=1e-12):
-  
 
-        h_y = -np.sum(self.q_y * np.log(self.q_y + eps), axis=1) / self.q_y.shape[1]  
+        h_y = -np.sum(self.q_y * np.log(self.q_y + eps), axis=1) / self.q_y.shape[1]
         return h_y
-    
 
     # def clade_score(self):
     #     """Return dict """
@@ -173,4 +163,3 @@ class TreeFit:
     #         den = w_cells.sum()       + (w_snvs).sum()
     #         se[r] = 1.0 - num / den
     #     return se
-

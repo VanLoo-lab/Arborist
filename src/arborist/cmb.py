@@ -32,8 +32,6 @@ def clade_cmb(n, cell_mapping, snvs, T, df, min_cells=10):
     clade_nodes = get_descendants(T, n) | {n}
 
     outside_nodes = get_nodes(T) - clade_nodes
-   
-
 
     within_clade_cells = list(
         itertools.chain.from_iterable([cell_mapping[u] for u in clade_nodes])
@@ -75,7 +73,6 @@ def cmb(ca_df, trees, clade_snvs, read_counts, min_cells=10):
     tree = trees[tree_index[0]]
     tree_dict = edge_list_to_adj_list(tree)
 
-
     phi = dict(zip(ca_df["cell"], ca_df["clone"]))
     cell_mapping = defaultdict(list)
     for cell, node in phi.items():
@@ -97,16 +94,11 @@ def cmb(ca_df, trees, clade_snvs, read_counts, min_cells=10):
     return cmb_df
 
 
-
-
-
 def main():
     args = parse_args()
     dat = pd.read_csv(args.read_counts)
 
-
     phi_df = pd.read_csv(args.cell_assign)
-
 
     psi = dat[["snv", "cluster"]].drop_duplicates()
     psi = dict(zip(psi["snv"], psi["cluster"]))

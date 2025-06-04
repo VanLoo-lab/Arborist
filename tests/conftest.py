@@ -1,8 +1,8 @@
 import simit.simulator as sim
-import pytest 
+import pytest
 
 
-@pytest.fixture 
+@pytest.fixture
 def simulate_small():
     gt, simdata = sim.simulate(
         seed=26,
@@ -13,13 +13,13 @@ def simulate_small():
         candidate_trees=None,
         candidate_set_size=4,
         cluster_error_prob=0.05,
-        min_proportion=0.05
+        min_proportion=0.05,
     )
 
-    yield simdata 
+    yield simdata
 
 
-@pytest.fixture 
+@pytest.fixture
 def simulate_large():
     gt, simdata = sim.simulate(
         seed=26,
@@ -30,13 +30,13 @@ def simulate_large():
         candidate_trees=None,
         candidate_set_size=1,
         cluster_error_prob=0.05,
-        min_proportion=0.05
+        min_proportion=0.05,
     )
 
-    yield simdata 
+    yield simdata
 
 
-@pytest.fixture 
+@pytest.fixture
 def simulate_medium():
     gt, simdata = sim.simulate(
         seed=26,
@@ -47,7 +47,7 @@ def simulate_medium():
         candidate_trees=None,
         candidate_set_size=1,
         cluster_error_prob=0.05,
-        min_proportion=0.05
+        min_proportion=0.05,
     )
 
-    yield simdata 
+    yield simdata
