@@ -6,7 +6,8 @@ from scipy.special import logsumexp
 from collections import defaultdict
 from scipy.stats import entropy
 import pygraphviz as pgv
-from .utils import read_tree_edges_conipher, read_tree_edges_sapling, visualize_tree
+from .utils import read_trees, visualize_tree
+import networkx as nx 
 
 
 def parse_arguments():
@@ -15,13 +16,17 @@ def parse_arguments():
         "-R",
         "--read_counts",
         required=True,
-        help="Path to read counts CSV file with columns 'cell', 'cluster', 'total', 'alt'",
+        help="Path to read counts CSV file with columns 'cell', 'total', 'alt'",
+    )
+    parser.add_argument(
+        "-C",
+        "--clustering",
+        required=True,
+        help="path to snv cluster labels, csv file with unlabeled columns 'snv', 'cluster'",
     )
     parser.add_argument("-T", "--trees", required=True, help="Path to tree file")
     parser.add_argument(
-        "--sapling",
-        action="store_true",
-        help="Use sapling format for tree edges, otherwise conipher format is assumed.",
+         "--edge-delim", required=False, type=str, default=" ", help="edge delimiter in candidate tree file."
     )
     parser.add_argument(
         "--alpha",
@@ -55,28 +60,39 @@ def parse_arguments():
     parser.add_argument(
         "-d", "--draw", required=False, type=str, help="Path to save the tree image"
     )
+    parser.add_argument(
+        "--snv-assign",
+        required=False,
+        type=str,
+        help="Path to where snv assignments output should be saved",
+    )
+    parser.add_argument(
+        "--genotypes",
+        required=False,
+        type=str,
+        help="Path to where the genotypes should be saved",
+    )
+    parser.add_argument(
+        "--add-normal",
+        action="store_true",
+        help="indicates if a normal root should be added to the tree",
+    )
+    parser.add_argument(
+        "-t",
+        "--tree",
+        type=str,
+        help="path to where the tree should be saved",
+    )
 
     return parser.parse_args()
 
 
-# def run():
-#     raise NotImplementedError
-#     #initialize snv clusters
-#     #create the tree
-#     prev_likelihood = np.inf
-#     while True:
-#         tree_like = cell_assign = find_cell_assignments()
-#         tree_like, snv_clusters = find_snv_clusters()
-
-#         if np.abs(prev_likelihood - tree_like) <  0.01:
-#             break
-
-#     return tree_like, cell_assign, snv_clusters
-
-
-# def find_snv_clusters(read_counts, tree, cell_assignment):
-#     raise NotImplementedError
-
+def save_tree(fname, tree, sep=" "):
+    """Save a nx digraph tree to a flat text file"""
+    with open(fname, "w+") as file:
+        file.write(f"{len(tree)} #edges tree 0\n")
+        for u, v in tree:
+            file.write(f"{u}{sep}{v}\n")
 
 def find_cell_assignments(read_counts, genotype_matrix, error_rate=0.001):
     """
@@ -172,6 +188,35 @@ def find_cell_assignments(read_counts, genotype_matrix, error_rate=0.001):
     product = np.sum(Cell_assignment.max(axis=1))
     return product, Cell_assignment
 
+
+def save_genotypes(fname, tree, snv_to_cluster, x=1, y=1):
+    
+
+    tree = nx.DiGraph(tree)
+    print(list(tree.edges))
+    root = [n for n in tree if len(list(tree.predecessors(n)))==0][0]
+    geno_dict ={n: {} for n in tree}
+
+    for node in tree:
+        for cluster in tree:
+            if cluster != root:
+                if node==cluster or tree.has_predecessor(node,cluster):
+                    geno_dict[node][cluster]= 1
+                else:
+                    geno_dict[node][cluster]= 0
+            else:
+                geno_dict[node][cluster]= 0 
+    geno_list= []
+
+    for n in tree:
+        for j, clust in snv_to_cluster.items():
+            if clust in tree:
+                geno_list.append([n, j, x,y,geno_dict[n][clust], 0, 1])
+            else:
+                geno_list.append([n, j, x,y,0, 0, 1])
+
+    geno_df = pd.DataFrame(geno_list, columns=["node", "snv", "x", "y", "xbar", "ybar", "segment"])
+    geno_df.to_csv(fname, index=False)
 
 def build_genotypes(tree):
     child_to_parent = {child: parent for parent, child in tree}
@@ -314,13 +359,27 @@ def main():
     args = parse_arguments()
     read_counts = pd.read_csv(args.read_counts)
 
-    read_trees = read_tree_edges_conipher
+    clustering = pd.read_csv(args.clustering, header=None, names=["snv", "cluster"])
 
-    if args.sapling:
-        read_trees = read_tree_edges_sapling
+    snv_to_cluster = dict(zip(clustering["snv"], clustering["cluster"]))
 
-    candidate_trees = read_trees(args.trees, sep=",")
-    print(len(candidate_trees))
+    read_counts["cluster"] = read_counts["snv"].map(snv_to_cluster)
+   
+
+  
+
+    candidate_trees = read_trees(args.trees, sep=args.edge_delim)
+    updated_trees =[]
+    if args.add_normal:
+        for tree in candidate_trees:
+            T = nx.DiGraph(tree)
+            clonal = [n for n in T if T.in_degree(n)==0][0]
+            normal_id = min(T.nodes) - 1
+            T.add_edge(normal_id, clonal)
+            updated_trees.append(list(T.edges))
+        candidate_trees = updated_trees
+
+
     ranked_trees, cell_assignments = rank_trees(
         candidate_trees,
         read_counts,
@@ -330,18 +389,37 @@ def main():
     )
 
     tree_idx = ranked_trees["tree"].tolist()[0]
+    best_tree = cell_assignments[cell_assignments["tree"] == tree_idx]
+    cell_assign = dict(zip(best_tree["cell"], best_tree["clone"]))
     if args.draw:
 
-        best_tree = cell_assignments[cell_assignments["tree"] == tree_idx]
-        cell_assign = dict(zip(best_tree["cell"], best_tree["clone"]))
+       
         visualize_tree(
             candidate_trees[tree_idx],
             cell_assignment=cell_assign,
             output_file=args.draw,
         )
+    inf_tree = candidate_trees[tree_idx]
+    
+    if args.tree:
+        save_tree(args.tree, inf_tree)
+    
+    if args.genotypes:
+        save_genotypes(args.genotypes, inf_tree, snv_to_cluster)
 
+    if args.snv_assign:
+        tree_nx = nx.DiGraph(inf_tree)
+        clustering = clustering[clustering["cluster"].isin(list(tree_nx))]
+        alt_sum = read_counts.groupby("snv")["alt"].sum()
+        valid_snvs = alt_sum[alt_sum > 0].index
+
+        print(f"Number of valid SNVs:  {len(valid_snvs)}")
+        clustering = clustering[clustering["snv"].isin(valid_snvs)]
+        clustering.to_csv(args.snv_assign, index=False)
+    
     # Save results
     if args.ranking:
         ranked_trees.to_csv(args.ranking, index=False)
     if args.cell_assign:
-        cell_assignments.to_csv(args.cell_assign, index=False)
+        cell_assign = best_tree[["cell", "clone"]].copy()
+        cell_assign.to_csv(args.cell_assign, index=False)

@@ -5,7 +5,7 @@ import numba
 from numba import njit, prange
 from scipy.stats import binom
 from collections import defaultdict
-from .utils import read_tree_edges_conipher, visualize_tree
+from .utils import read_trees, visualize_tree
 from .treefit import TreeFit
 import networkx as nx
 
@@ -20,6 +20,12 @@ def parse_arguments() -> argparse.Namespace:
         required=True,
         help="Path to read counts CSV file with columns 'snv', 'cell', 'cluster', 'total', 'alt'",
     )
+    parser.add_argument(
+        "-Y",
+        "--snv-clusters",
+        required=True,
+        help="Path to SNV clusters CSV file with columns 'snv', 'cluster'"
+    )
     parser.add_argument("-T", "--trees", required=True, help="Path to file containing all candidate trees to be ranked.")
     parser.add_argument(
         "--alpha",
@@ -27,6 +33,19 @@ def parse_arguments() -> argparse.Namespace:
         type=float,
         default=0.001,
         help="Per base sequencing error",
+    )
+    # parser.add_argument(
+    #     "--normal",
+    #     required=False,
+    #     type=int,
+    #     default=0,
+    #     help="node id of the normal clone",
+    # ),
+    parser.add_argument(
+        "--add-normal",
+        required=False,
+        action="store_true",
+        help="add a normal clone if input trees do not already contain them",
     )
     parser.add_argument(
         "--max-iter",
@@ -66,6 +85,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Path to where the approximate cell posterior should be saved",
     )
     parser.add_argument(
+        "--genotypes",
+        required=False,
+        type=str,
+        help="Path to where the inferred node genotypes should be saved",
+    )
+    parser.add_argument(
         "-v", "--verbose", help="Print verbose output", action="store_true"
     )
     parser.add_argument(
@@ -73,6 +98,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "-t", "--tree", required=True, help="Path to save the top ranked tree file."
+    )
+    parser.add_argument(
+         "--edge-delim", required=False, type=str, default=" ", help="edge delimiter in candidate tree file."
     )
     parser.add_argument(
         "--prior",
@@ -257,7 +285,7 @@ def log_array(arr):
     np.ndarray
         Array of the same shape as input, with log applied to positive entries and -inf elsewhere.
     """
-    log_arr = np.full_like(arr, -np.inf)
+    log_arr = np.full(arr.shape, -np.inf, dtype=np.float64)
     for j in range(arr.shape[0]):
         for p in range(arr.shape[1]):
             if arr[j, p] > 0.0:
@@ -431,7 +459,7 @@ def build_sparse_input(df, cell_to_idx, snv_to_idx):
     return cell_idx, snv_idx, log_matrix
 
 
-def enumerate_presence(tree: list, clones: list, clusters: list) -> np.array:
+def enumerate_presence(tree: list, clone_to_idx: dict, cluster_to_idx: dict) -> np.array:
     """
     Enumerates the presence of each clone in the genotype matrix.
 
@@ -444,34 +472,33 @@ def enumerate_presence(tree: list, clones: list, clusters: list) -> np.array:
     clusters : list
         List of cluster identifiers (subset of clones).
 
-    Returns
+    Returnstheta
     -------
     np.ndarray
         Presence matrix of shape (n_clusters, n_clones), where entry [p, r] is 1 if clone r is a descendant of cluster p.
     """
     T = nx.DiGraph(tree)
-    n_clones = len(clones)
-    n_clusters = len(clusters)
-    presence = np.zeros((n_clusters, n_clones), dtype=int)
-    clone_to_idx = {r: i for i, r in enumerate(clones)}
 
-    for p, cluster_p in enumerate(clusters):
+    presence = np.zeros((len(cluster_to_idx), len(clone_to_idx)), dtype=int)
+    # clone_to_idx = {r: i for i, r in enumerate(clones)}
+
+    for  cluster_p, idx_p in cluster_to_idx.items():
         desc = nx.descendants(T, cluster_p) | {cluster_p}
         for d in desc:
-            presence[p, clone_to_idx[d]] = 1
-
+            presence[idx_p, clone_to_idx[d] ] = 1
+    # print(presence)
     return presence
 
 
 def initialize_q_y(
-    read_counts: pd.DataFrame, clusters: list, snv_to_idx: dict, gamma: float
+    snv_clusters: pd.DataFrame, cluster_to_idx: dict, snv_to_idx: dict, gamma: float
 ) -> np.ndarray:
     """
     Initialize the variational posterior q(y_j = p) for each SNV j and cluster p.
 
     Parameters
     ----------
-    read_counts : pd.DataFrame
+    snv_clusters : pd.DataFrame
         Must have columns 'snv' and 'cluster', where 'cluster' is the
         initial hard assignment ψ(snv) in [clusters].
     clusters : list
@@ -487,17 +514,18 @@ def initialize_q_y(
         q_y[j, p] = gamma if ψ(j) == p else (1-gamma)/(k-1).
     """
     # Build a quick map: snv -> its hard cluster
-    cluster_map = dict(zip(read_counts["snv"], read_counts["cluster"]))
-    m, k = len(cluster_map), len(clusters)
+    cluster_map = dict(zip(snv_clusters["snv"], snv_clusters["cluster"]))
+    m, k = len(snv_to_idx), len(cluster_to_idx)
     q_y = np.zeros((m, k), dtype=np.float64)
 
     # Epsilon mass on correct cluster; uniform remainder
-    other = (1 - gamma) / (k - 2) if k > 1 else 0.0
+    other = (1 - gamma) / (k - 1) if k > 1 else 0.0
 
-    for snv, assigned in cluster_map.items():
-        j = snv_to_idx[snv]
-        for p_idx, clone_id in enumerate(clusters):
-            q_y[j, p_idx] = gamma if (assigned == clone_id) else other
+    for snv, j in snv_to_idx.items():
+        
+        assigned = cluster_map[snv]
+        for cluster, idx in cluster_to_idx.items():
+            q_y[j, idx] = gamma if assigned == cluster else other
 
     return q_y
 
@@ -782,6 +810,7 @@ def precompute_log_likelihoods(
     cell_to_idx = {cell: idx for idx, cell in enumerate(cells)}
     snv_to_idx = {snv: idx for idx, snv in enumerate(snvs)}
 
+
     return read_counts, cell_to_idx, snv_to_idx
 
 
@@ -809,12 +838,13 @@ def tree_to_clone_set(tree: list) -> list:
 def rank_trees(
     tree_list: list,
     read_counts: pd.DataFrame,
+    snv_clusters: pd.DataFrame,
     alpha: float = 0.001,
     max_iter: int = 10,
     tolerance: float = 1,
     gamma=0.7,
     update_snvs=True,
-    verbose: bool = False,
+    verbose: bool = False
 ) -> tuple:
     """
     Rank SNV phylogenetic trees based on evidence lower bound given scDNA-seq read count data.
@@ -849,25 +879,37 @@ def rank_trees(
     """
 
     tree = tree_list[0]
+    
+    #assume root is normal
+    temp_tree = nx.DiGraph(tree)
+    normal = [n for n in temp_tree if temp_tree.in_degree(n)==0][0]
     clone_set = tree_to_clone_set(tree)
     for tree in tree_list:
         if tree_to_clone_set(tree) != clone_set:
             raise ValueError("All trees must have the same set of clones.")
 
     clones = list(clone_set)
-    clusters = [c for c in clones if c != -1]
+
+    clusters = [c for c in clones if c != normal]
+  
     # Filter read_counts to only include cells and SNVs present in the tree
-    read_counts = read_counts[read_counts["cluster"].isin(clones)]
+    # read_counts = read_counts[read_counts["cluster"].isin(clones)]
+    clones.sort()
+    clusters.sort()
+    clone_to_idx = {c: i for i,c in enumerate(clones)}
+    cluster_to_idx = {c: i for i,c in enumerate(clusters)}
 
     alt_sum = read_counts.groupby("snv")["alt"].sum()
     valid_snvs = alt_sum[alt_sum > 0].index
+
+    print(f"Number of valid SNVs:  {len(valid_snvs)}")
     read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
 
     # appends columns log_absent and log_present to read_counts
     read_counts, cell_to_idx, snv_to_idx = precompute_log_likelihoods(
         read_counts, alpha
     )
-    q_y_init = initialize_q_y(read_counts, clusters, snv_to_idx, gamma)
+    q_y_init = initialize_q_y(snv_clusters, cluster_to_idx, snv_to_idx, gamma)
     cell_idx, snv_idx, log_like_matrix = build_sparse_input(
         read_counts, cell_to_idx, snv_to_idx
     )
@@ -916,7 +958,7 @@ def rank_trees(
 
 
 
-        presence = enumerate_presence(tree, clones, clusters)
+        presence = enumerate_presence(tree, clone_to_idx, cluster_to_idx)
       
 
         expected_log_like, q_z, q_y = run(
@@ -943,7 +985,8 @@ def rank_trees(
             q_y,
             cell_to_idx,
             snv_to_idx,
-            clones,
+            clone_to_idx,
+            cluster_to_idx
         )
         all_tree_fits[idx] = tfit
         if verbose:
@@ -960,13 +1003,36 @@ def main():
     args = parse_arguments()
     read_counts = pd.read_csv(args.read_counts)
 
-    read_trees = read_tree_edges_conipher
+    #SNV cluster input should include no column names
+    snv_clusters = pd.read_csv(args.snv_clusters, header=None, names=["snv", "cluster"])
 
-    candidate_trees = read_trees(args.trees, sep=",")
+
+  
+    candidate_trees = read_trees(args.trees, sep=args.edge_delim)
+    for t in candidate_trees:
+            print(t)
+
+    if args.add_normal:
+        print("appending normal clone to trees...")
+        cand_tree_with_root= []
+        for edge_list in candidate_trees:
+            tree = nx.DiGraph(edge_list)
+            root = [n for n in tree if len(list(tree.predecessors(n)))==0][0]
+            normal = min(list(tree.nodes)) - 1
+            tree.add_edge(normal, root)
+            cand_tree_with_root.append(list(tree.edges))
+        candidate_trees=cand_tree_with_root
+        for t in candidate_trees:
+            print(t)
+
+ 
+
+
 
     elbos, tfit, all_fits = rank_trees(
         candidate_trees,
         read_counts,
+        snv_clusters,
         alpha=args.alpha,
         verbose=args.verbose,
         max_iter=args.max_iter,
@@ -1003,6 +1069,9 @@ def main():
 
     if args.tree:
         tfit.save_tree(args.tree)
+
+    if args.genotypes:
+        tfit.save_genotypes(args.genotypes)
 
     if args.pickle:
         pd.to_pickle(all_fits, args.pickle)

@@ -70,7 +70,7 @@ def get_descendants(tree_dict, node):
     return collect_descendants(node)
 
 
-def read_tree_edges_conipher(file_path, sep=" "):
+def read_trees(file_path, sep=" "):
     """
     Reads tree edges from a file and organizes them into a list of trees.
 
@@ -106,7 +106,6 @@ def read_tree_edges_conipher(file_path, sep=" "):
     # Tree 1
     1 2
     1 3
-
     # Tree 2
     4 5
     4 6
@@ -123,7 +122,7 @@ def read_tree_edges_conipher(file_path, sep=" "):
     with open(file_path, "r") as file:
         for line in file:
             line = line.strip()
-            if not line or line.startswith("#"):  # Skip empty lines and comments
+            if not line or "#" in line:  # Skip empty lines and comments
                 if current_tree:  # Store previous tree before starting a new one
                     trees.append(current_tree)
                     current_tree = []
@@ -140,79 +139,79 @@ def read_tree_edges_conipher(file_path, sep=" "):
     return trees
 
 
-def read_tree_edges_sapling(file_path, header_prefix="backbone tree", sep="\t"):
-    """
-    Reads tree edges from a file and organizes them into a list of trees.
+# def read_tree_edges_sapling(file_path, header_prefix="backbone tree", sep="\t"):
+#     """
+#     Reads tree edges from a file and organizes them into a list of trees.
 
-    Each tree is represented as a list of tuples, where each tuple contains
-    two integers representing a parent-child relationship. Trees are separated
-    in the file by lines starting with a specified header prefix.
+#     Each tree is represented as a list of tuples, where each tuple contains
+#     two integers representing a parent-child relationship. Trees are separated
+#     in the file by lines starting with a specified header prefix.
 
-    Parameters
-    ----------
-    file_path : str
-        The path to the file containing the tree edge data.
-    header_prefix : str, optional
-        The prefix that indicates the start of a new tree in the file.
-        Default is "backbone tree".
+#     Parameters
+#     ----------
+#     file_path : str
+#         The path to the file containing the tree edge data.
+#     header_prefix : str, optional
+#         The prefix that indicates the start of a new tree in the file.
+#         Default is "backbone tree".
 
-    Returns
-    -------
-    list of list of tuple of int
-        A list of trees, where each tree is a list of tuples. Each tuple
-        represents a parent-child relationship as (parent, child).
+#     Returns
+#     -------
+#     list of list of tuple of int
+#         A list of trees, where each tree is a list of tuples. Each tuple
+#         represents a parent-child relationship as (parent, child).
 
-    Notes
-    -----
-    - Lines starting with "#" or empty lines are ignored.
-    - The file is expected to have space-separated integers for parent-child
-      relationships.
-    - If the file ends without a header for a new tree, the last tree is
-      automatically added to the result.
+#     Notes
+#     -----
+#     - Lines starting with "#" or empty lines are ignored.
+#     - The file is expected to have space-separated integers for parent-child
+#       relationships.
+#     - If the file ends without a header for a new tree, the last tree is
+#       automatically added to the result.
 
-    Examples
-    --------
-    Given a file with the following content:
+#     Examples
+#     --------
+#     Given a file with the following content:
 
-    ```
-    # Example tree file
-    backbone tree 1
-    1 2
-    1 3
-    backbone tree 2
-    4 5
-    4 6
-    ```
+#     ```
+#     # Example tree file
+#     backbone tree 1
+#     1 2
+#     1 3
+#     backbone tree 2
+#     4 5
+#     4 6
+#     ```
 
-    Calling the function:
+#     Calling the function:
 
-    >>> read_tree_edges_sapling("example.txt")
-    [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]
-    """
-    trees = []
-    current_tree = []
+#     >>> read_tree_edges_sapling("example.txt")
+#     [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]
+#     """
+#     trees = []
+#     current_tree = []
 
-    with open(file_path, "r") as file:
-        for line in file:
-            line = line.strip()
-            if not line or line.startswith("#"):  # Skip empty lines and comments
-                continue
+#     with open(file_path, "r") as file:
+#         for line in file:
+#             line = line.strip()
+#             if not line or "#" in line:  # Skip empty lines and comments
+#                 continue
 
-            if line.startswith(header_prefix):  # New tree starts here
-                if current_tree:  # Store previous tree before starting a new one
-                    trees.append(current_tree)
-                    current_tree = []
-                continue
+#             if line.startswith(header_prefix):  # New tree starts here
+#                 if current_tree:  # Store previous tree before starting a new one
+#                     trees.append(current_tree)
+#                     current_tree = []
+#                 continue
 
-            # Convert space-separated numbers to tuple (parent, child)
-            parts = line.split(sep)
-            if len(parts) == 2:
-                current_tree.append((int(parts[0]), int(parts[1])))
+#             # Convert space-separated numbers to tuple (parent, child)
+#             parts = line.split(sep)
+#             if len(parts) == 2:
+#                 current_tree.append((int(parts[0]), int(parts[1])))
 
-    if current_tree:  # Append last tree if exists
-        trees.append(current_tree)
+#     if current_tree:  # Append last tree if exists
+#         trees.append(current_tree)
 
-    return trees
+#     return trees
 
 
 def visualize_tree(tree, cell_assignment=None, output_file=None):

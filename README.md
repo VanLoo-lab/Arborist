@@ -233,8 +233,6 @@ gt, simdata = sim.simulate(
     min_proportion=0.05
 )
 
-print(f"Candidate set size: {len(simdata.candidate_set)}")
-
 
 rankings, best_fit, all_tree_fits = rank_trees(
     simdata.candidate_set,
@@ -250,6 +248,9 @@ print(rankings.head())
 
 
 ```
+
+
+
 
 Perform validation on the trees using the cell mutational burden `cmb` metric.
 ```python
