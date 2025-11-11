@@ -18,7 +18,7 @@ def parse_arguments() -> argparse.Namespace:
         "-R",
         "--read_counts",
         required=True,
-        help="Path to read counts CSV file with columns 'snv', 'cell', 'cluster', 'total', 'alt'",
+        help="Path to read counts CSV file with columns 'snv', 'cell',  'total', 'alt'",
     )
     parser.add_argument(
         "-Y",
@@ -521,11 +521,21 @@ def initialize_q_y(
     # Epsilon mass on correct cluster; uniform remainder
     other = (1 - gamma) / (k - 1) if k > 1 else 0.0
 
+    uniform = 1 / k
+
     for snv, j in snv_to_idx.items():
+        if snv not in cluster_map:
+            print(f"SNV {snv} not initialized with cluster assignment.")
+            assigned = None
+        else:
+            assigned = cluster_map[snv]
         
-        assigned = cluster_map[snv]
+
         for cluster, idx in cluster_to_idx.items():
-            q_y[j, idx] = gamma if assigned == cluster else other
+            if not assigned or assigned not in cluster_to_idx:
+                q_y[j, idx] = uniform
+            else:
+                q_y[j, idx] = gamma if assigned == cluster else other
 
     return q_y
 
@@ -893,7 +903,7 @@ def rank_trees(
     clusters = [c for c in clones if c != normal]
   
     # Filter read_counts to only include cells and SNVs present in the tree
-    # read_counts = read_counts[read_counts["cluster"].isin(clones)]
+   
     clones.sort()
     clusters.sort()
     clone_to_idx = {c: i for i,c in enumerate(clones)}
@@ -902,6 +912,8 @@ def rank_trees(
     alt_sum = read_counts.groupby("snv")["alt"].sum()
     valid_snvs = alt_sum[alt_sum > 0].index
 
+    #valid SNVs are SNVs that have at least one variant read across all cells 
+    #otherwise we have no signal to place them in the tree
     print(f"Number of valid SNVs:  {len(valid_snvs)}")
     read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
 
