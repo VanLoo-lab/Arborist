@@ -8,13 +8,21 @@ import itertools
 import argparse
 from collections import defaultdict
 from .utils import (
-    read_tree_edges_conipher,
-    read_tree_edges_sapling,
+    # read_trees,
     get_descendants,
     edge_list_to_adj_list,
     get_nodes,
 )
 
+def clade_pooled_vaf(df, cells, snvs):
+    df = df[df["cell"].isin(cells)]
+    df = df[df["snv"].isin(snvs)]
+    df_vaf = (
+        df.groupby("snv")
+        .apply(lambda x: (x["alt"]).sum()/ x["total"].sum())
+        .reset_index(name="vaf")
+    )
+    return df_vaf
 
 def compute_cmb(df, cells, snvs):
     df = df[df["cell"].isin(cells)]
@@ -27,7 +35,7 @@ def compute_cmb(df, cells, snvs):
     return df_cmb
 
 
-def clade_cmb(n, cell_mapping, snvs, T, df, min_cells=10):
+def clade_cmb(n, cell_mapping, snvs, T, df, min_cells=50):
 
     clade_nodes = get_descendants(T, n) | {n}
 
@@ -66,33 +74,137 @@ def clade_cmb(n, cell_mapping, snvs, T, df, min_cells=10):
     return df
 
 
-def cmb(ca_df, trees, clade_snvs, read_counts, min_cells=10):
+def clade_vaf(n, cell_mapping, snvs, T, df, min_cells=50):
 
-    tree_index = ca_df["tree"].unique()
-    assert len(tree_index) == 1
-    tree = trees[tree_index[0]]
+    clade_nodes = get_descendants(T, n) | {n}
+
+    outside_nodes = get_nodes(T) - clade_nodes
+
+    within_clade_cells = list(
+        itertools.chain.from_iterable([cell_mapping[u] for u in clade_nodes])
+    )
+    outside_clade_cells = list(
+        itertools.chain.from_iterable([cell_mapping[u] for u in outside_nodes])
+    )
+
+    outside_df = None
+    within_df = None
+    # returns a vector of length outside_clade_cells
+    if len(outside_clade_cells) >= min_cells:
+        outside_df = clade_pooled_vaf(df, outside_clade_cells, snvs)
+
+        outside_df["within_clade"] = 0
+
+    if len(within_clade_cells) >= min_cells:
+        within_df = clade_pooled_vaf(df, within_clade_cells, snvs)
+        within_df["within_clade"] = 1
+
+    if outside_df is not None and within_df is not None:
+        df = pd.concat([outside_df, within_df])
+    elif outside_df is not None:
+        df = outside_df
+    elif within_df is not None:
+        df = within_df
+    else:
+        df = pd.DataFrame(columns=["snv", "vaf", "within_clade"])
+    # df["clade_cells"] = len()
+    df["clade"] = n
+
+    return df
+# def cmb(ca_df, trees, clade_snvs, read_counts, min_cells=10):
+
+#     tree_index = ca_df["tree"].unique()
+#     assert len(tree_index) == 1
+#     tree = trees[tree_index[0]]
+#     tree_dict = edge_list_to_adj_list(tree)
+
+#     phi = dict(zip(ca_df["cell"], ca_df["clone"]))
+#     cell_mapping = defaultdict(list)
+#     for cell, node in phi.items():
+#         cell_mapping[node].append(cell)
+
+#     cmb_list = []
+#     for n in get_nodes(tree_dict):
+#         snvs = clade_snvs[n]
+#         if len(snvs) > 0:
+#             cmb_list.append(
+#                 clade_cmb(
+#                     n, cell_mapping, snvs, tree_dict, read_counts, min_cells=min_cells
+#                 )
+#             )
+
+#     cmb_df = pd.concat(cmb_list)
+#     cmb_df["tree"] = tree_index[0]
+
+#     return cmb_df
+
+
+def cmb( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
+
+    clade_snvs = defaultdict(list)
+    for j, cluster in psi.items():
+        clade_snvs[cluster].append(j)
+
+
     tree_dict = edge_list_to_adj_list(tree)
 
-    phi = dict(zip(ca_df["cell"], ca_df["clone"]))
+
+
     cell_mapping = defaultdict(list)
     for cell, node in phi.items():
         cell_mapping[node].append(cell)
 
     cmb_list = []
+    
     for n in get_nodes(tree_dict):
         snvs = clade_snvs[n]
-        if len(snvs) > 0:
+        if len(snvs) > min_snvs:
             cmb_list.append(
                 clade_cmb(
                     n, cell_mapping, snvs, tree_dict, read_counts, min_cells=min_cells
                 )
             )
+        # else:
+        #     print(f"skipping clade {n} due to insufficient SNVs")
 
     cmb_df = pd.concat(cmb_list)
-    cmb_df["tree"] = tree_index[0]
+   
 
     return cmb_df
 
+
+def pooled_vaf( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
+
+    clade_snvs = defaultdict(list)
+    for j, cluster in psi.items():
+        clade_snvs[cluster].append(j)
+
+
+    tree_dict = edge_list_to_adj_list(tree)
+
+
+
+    cell_mapping = defaultdict(list)
+    for cell, node in phi.items():
+        cell_mapping[node].append(cell)
+
+    df_list = []
+    
+    for n in get_nodes(tree_dict):
+        snvs = clade_snvs[n]
+        if len(snvs) > min_snvs:
+            df_list.append(
+                clade_vaf(
+                    n, cell_mapping, snvs, tree_dict, read_counts, min_cells=min_cells
+                )
+            )
+        # else:
+        #     print(f"skipping clade {n} due to insufficient SNVs")
+
+    vaf_df = pd.concat(df_list)
+   
+
+    return vaf_df
 
 def main():
     args = parse_args()
@@ -100,17 +212,15 @@ def main():
 
     phi_df = pd.read_csv(args.cell_assign)
 
-    psi = dat[["snv", "cluster"]].drop_duplicates()
-    psi = dict(zip(psi["snv"], psi["cluster"]))
+    psi = pd.read_csv(args.snv_assign)
+    psi = dict(zip(psi["id"], psi["assignment"]))
     clade_snvs = defaultdict(list)
     for j, cluster in psi.items():
         clade_snvs[cluster].append(j)
 
-    read_trees = read_tree_edges_conipher
-    if args.sapling:
-        read_trees = read_tree_edges_sapling
+  
 
-    trees = read_trees(args.trees)
+    trees = read_trees(args.trees, sep=args.edge_delim)
 
     cmb_df = phi_df.groupby("tree").apply(
         lambda x: cmb(x, trees, clade_snvs, dat, min_cells=args.min_cells)
@@ -146,6 +256,13 @@ def parse_args():
         type=int,
         default=10,
         help="minimum number of cells to compute the scores for a clade",
+    )
+    parser.add_argument(
+        "--min-snvs",
+        required=False,
+        type=int,
+        default=50,
+        help="minimum number of snvs to compute the scores for a clade",
     )
     parser.add_argument(
         "-o",

@@ -167,7 +167,31 @@ class TreeFit:
         geno_df = pd.DataFrame(geno_list, columns=["node", "snv", "x", "y", "xbar", "ybar", "segment"])
         geno_df.to_csv(fname, index=False)
 
-       
+    
+    def cell_entropy(self, eps=1e-12):
+        row_dict= self.cell_to_idx
+        h_z = self.compute_hz(eps)
+        df = pd.DataFrame(h_z)
+        df.columns = ['entropy']
+        df.index.name = "id"
+        df.reset_index(inplace=True)
+        label_dict = {val: key for key, val in row_dict.items()}
+        df["id"] = df["id"].map(label_dict)
+
+        return df
+    
+    def snv_cluster_entropy(self, eps=1e-12):
+        row_dict= self.snv_to_idx
+        h_y = self.compute_hy(eps)
+        assert h_y.shape[0] == len(row_dict)
+        df = pd.DataFrame(h_y)
+        df.columns = ['entropy']
+        df.index.name = "id"
+        df.reset_index(inplace=True)
+        label_dict = {val: key for key, val in row_dict.items()}
+        df["id"] = df["id"].map(label_dict)
+
+        return df
 
 
     def compute_hz(self, eps=1e-12):
