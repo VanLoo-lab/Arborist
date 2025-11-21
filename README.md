@@ -61,8 +61,8 @@ Example input files can be found in the [example/input](example/input) directory
 
 Arborist requires three inputs as three seperate files:
 1. [a CSV file containing single-cell variant $A$ and total $D$ read count data](#read-counts-file-format)
-2. [a CSV file containing the initial SNV clustering $\psi$](#initial-snv-clustering-format)
-3. [a text file contained the set $\mathcal{T}$ of candidate clone trees](#tree-format)
+2. [a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
+3. [a text file contained the set of candidate clone trees](#tree-format)
 
 
 #### **Read Counts File Format**
