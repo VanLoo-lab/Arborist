@@ -7,9 +7,7 @@ name = "arborist"
 version = "0.1.0"
 description = "A tool to rank SNV phylogenies inferred from bulk DNA sequencing via low-pass scDNA-seq data."
 authors = [
-    { name = "Leah L. Weber", email = "llweber@mdanderson.org" },
-    { name = "Chiyin Ching", email = "CChing@mdanderson.org"},
-    { name = "Chritopher Ly", email = "CLy2@mdanderson.org"}
+    { name = "Leah L. Weber", email = "llweber@mdanderson.org" }
   
 ]
 license = { text = "BSD-3-Clause" } 
@@ -35,5 +33,4 @@ where = ["src"]
 
 [project.scripts]
 arborist = "arborist.arborist:main"
-arborist-base = "arborist.arborist_base:main"
-cmb = "arborist.cmb:main"
+
