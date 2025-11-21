@@ -196,7 +196,7 @@ The following is a minimal `arborist` example with default parameters and no out
 ```bash
    arborist -R example/input/read_counts.csv \
    -T example/input/candidate_trees.txt \
-   -Y example/input/input_clustering.csv \
+   -Y example/input/input_clustering.csv 
 ```
 
 This example demonstrates how to modify parameters and write relevant output files. 
