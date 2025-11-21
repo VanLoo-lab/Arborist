@@ -111,7 +111,7 @@ def read_trees(file_path, sep=" "):
     4 6
     ```
 
-    Calling `read_tree_edges_conipher("path/to/file")` will return:
+
 
     >>> read_tree_edges_conipher("path/to/file")
     [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]

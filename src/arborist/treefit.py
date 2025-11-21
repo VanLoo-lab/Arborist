@@ -28,7 +28,10 @@ class TreeFit:
         self.idx_to_cluster = {v: k for k,v in self.cluster_to_idx.items()}
 
     def __str__(self):
-        return f"{self.tree_idx}: {self.elbo}"
+        mystr=  f"ELBO: {self.elbo}\nTree Index: {self.tree_idx}\n"
+        for u,v in self.tree:
+            mystr+= f" {u}->{v}\n"
+        return mystr
 
     def convert_q_to_dataframe(self, q, row_dict, col_dict):
         """

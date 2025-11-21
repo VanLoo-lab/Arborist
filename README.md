@@ -1,29 +1,30 @@
 # Overview
-Arborist is a method to rank SNV phylogenetic trees inferred from bulk DNA sequencing data by leveraging low-pass single-cell DNA sequencing (scDNA-seq) data. The method is designed to prioritize the most probable tree, helping to resolve ambiguities in bulk tree inference. Arborist uses variational inference to compute the evidence lower bound on the posterior probability of each tree in the input candidate set and approximates the cell to clone assignment posterior distribution as well as the SNV to SNV cluster assignment posterior. Thus, Arborist not only helps to resolve tree ambiguity within the bulk solution space but also helps improve an SNV cluster and yields a natural way to genotype single-cells and derive clone assignments for downstream analysis.
+Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing data by leveraging low-pass single-cell DNA sequencing (scDNA-seq) data. The method is designed to prioritize the most probable tree, helping to resolve ambiguities in bulk tree inference. Arborist uses variational inference to compute the evidence lower bound on the posterior probability of each tree in the input candidate set and approximates the cell to clone assignment posterior distribution as well as the SNV to SNV cluster assignment posterior. Arborist not only helps to resolve tree ambiguity within the bulk solution space but also helps improve an SNV cluster and yields a natural way to genotype single-cells and derive cell-to-clone assignments for downstream analysis.
 
 
 ## Table of Contents
-- [Features](#features)
 - [Dependencies](#dependencies)
 - [Installation](#installation)
 - [I/O Data Formats](#io-data-formats)
     - [Input Data](#input-data)
-        - [Candidate tree format](#conipher-tree-format)
         - [Read counts format](#read-counts-file-format)
+        - [Initial SNV clustering format](#initial-snv-clustering-file-format)
+        - [Candidate tree format](#tree-file-format)
     - [Output Data](#output-files)
 - [Usage](#usage)
     - [Arborist CLI tool](#arborist-cli-tool)
-    - [`arborist` package](#arborist-package)
-
+    <!-- - [`arborist` package](#arborist-package) -->
+- [Example](#example)
+<!-- 
 
 ## Features
 - Ranks candidate SNV phylogenies via estimation of a lower bound on the posterior probability
 - Assigns cells to their most probable clones and computes the approximate posterior probability of assignment to each clone in the tree.
 - Assigns SNVs to their most probable SNV clusters and computes the approximate posterior probability of assignment to each SNV cluster in the tree.
-- Functions to compute the cell mutational burden (cmb) on the output of `arborist` for additional valdiation.
+- Functions to compute the cell mutational burden (cmb) on the output of `arborist` for additional valdiation. -->
 
 
----
+
 
 
 ---
@@ -42,20 +43,8 @@ The `arborist` package requires the following dependencies:
 
 ## Installation
 
+Clone the respository and install the package using `pip`. *Note: dependencies will be installed automatically*
 
-Clone the respository and `sim-it` as a submodule (recommended). This will also clone the Sim-it repository.
-Install packages locally. Note: dependencies will be installed automatically via pip.
-
-```bash
-git clone --recurse-submodules git@github.com:VanLoo-lab/Arborist.git
-cd Arborist
-pip install .
-cd simulator
-pip install .
-```
-
-
-Alternatively, just clone and install the Arborist repository from github.
 
 ```bash
 git clone https://github.com/VanLoo-lab/Arborist.git
@@ -68,122 +57,162 @@ pip install .
 ## I/O Data Formats
 
 ### Input Data
+Example input files can be found in the [example/input](example/input) directory.
+
+Arborist requires three inputs as three seperate files:
+1. [a CSV file containing single-cell variant $A$ and total $D$ read count data](#read-counts-file-format)
+2. [a CSV file containing the initial SNV clustering $\psi$](#initial-snv-clustering-format)
+3. [a text file contained the set $\mathcal{T}$ of candidate clone trees](#tree-format)
+
 
 #### **Read Counts File Format**
-The input read counts file should be in CSV format or `panda.DataFrame` and contain the following columns:
+The input read counts file should be in CSV format contain the following columns with header row in any order:
 | Column | Description |
 |---------|------------|
-| `cell` | cell identifier |
-| `snv` | SNV id |
+| `cell` | cell identifier, str or int |
+| `snv` | SNV identifier, str or int |
 | `total` | Total number of reads for cell and SNV |
 | `alt` | Number of variant reads for cell and SNV |
-| `cluster` | Cluster id to which the SNV belongs. |
 
 
+**Example**
+```
+snv,cell,alt,total
+0,4,0,1
+0,5,0,1
+0,29,0,1
+0,45,0,1
+0,48,0,1
+0,64,0,1
+0,76,0,1
+0,92,0,1
+0,97,0,1
+```
+
+### **Initial SNV Clustering File Format**
+The initial SNV clustering file should be in CSV format and contain no headers. The order of the columns matter with the first column being the SNV identifier followed by the initial SNV cluster label. SNV identifiers should be consistent with the read count file and cluster labels should be consistent with the node labels in the candidate tree. Any SNV assigned to an SNV cluster label that is not present in the tree with be initialized with a uniform prior over all SNV clusters. 
+
+| Column | Description |
+|---------|------------|
+| `snv` | SNV identifier, str or int |
+| `cluster` | SNV cluster label, int |
+
+**Example**
+```
+108,2
+123,2
+176,2
+289,2
+452,2
+597,2
+857,2
+890,2
+909,2
+918,2
+```
 
 
-#### **Tree Format**
-- Trees are labeled numerically (e.g., `# .* tree 1 .*`).
-- Each tree consists of comma seperated parent-child relationships.
-- The root of each tree is always labeled by -1 and represents the normal clone. This is because the scDNA-seq may contain normal cells.
+#### **Tree File Format**
+- The header for each tree, i.e., '# Tree 1'  must contain '#' but the remaining text is unimportant
+- Each tree consists of delimited seperated parent-child relationships. The `arborist` default delimiter is " " but different delimiters maye be passed via the `--edge-delim` argument 
+- If clone trees do not contain a normal clone (this is common), then the argument `--add-normal` should be used to tell `arborist` to append a normal clone to the root of each clone tree. Any cells assigned to the root will be normal cells. 
+- Node identifiers must be integers
 
 
 **Example:**
 ```
-#candidate tree 0
-0,4
-2,1
-1,0
--1,2
-1,3
-#candidate tree 1
-2,4
-4,0
-2,3
--1,2
-4,1
-#candidate tree 2
-4,0
-2,1
-3,4
--1,2
-1,3
-#candidate tree 3
-4,0
-2,1
-1,4
-2,3
--1,2
-#candidate tree 4
-2,4
-4,0
-2,1
-2,3
--1,2
-#candidate tree 5
-2,4
-2,1
-1,0
--1,2
-1,3
+    # Tree 1
+    1 2
+    1 3
+    # Tree 2
+    4 5
+    4 6
 ```
+
 
 
 
 ---
 
 ## Output Data
-Example input and output files can be found in the `example/input` and `example/output` directories.
-<!-- 
-| File | Description |
+Some example output files are located in the [example/output](example/output) directory.
+Below is table describing the optional output files from `arborist`
+
+| argument | Description |
 |------|------------|
-| `ranked_trees.csv` | Ranked trees with their probabilities. |
-| `top20_trees_cell_assignment.csv` | Cell assignments for the top 20 ranked trees. |
-| `Entropy.csv` | Entropy estimates for cell assignments. | -->
+| `--pickle`| A pickled dictionary with tree index as key and `TreeFit` objects containing the fit for each clone tree|
+| `--draw`| A visualization of the `arborist` top ranked clone tree |
+| `--tree` | A flat text file similar to the input format containing the `arborist` top ranked clone tree |
+| `--ranking` | a CSV file containg the ranking of the clone trees by the ELBO from best to worst. 'tree_idx' is the order listed in the candidate set |
+| `--cell-assign` | a CSV file containing the MAP assignment of cell (id) to clone (assignment) |
+| `--snv-assign` | a CSV file containing the MAP assignment of SNV (id) to cluster (assignment) |
+| `--q_z` | a CSV file containing the approximate posterior distribution over cell-to-clone labels |
+| `--q_y` | a CSV file containing the approximate posterior distribution over SNV-to-cluster labels |
+
+
+
 
 
 ## Usage
+After installation, `arborist` can be run via the command line with usage as shown below. 
 
 ### Arborist CLI tool
 ```bash
 $ arborist -h
-usage: arborist [-h] -R READ_COUNTS -T TREES [--alpha ALPHA] [--max-iter MAX_ITER] [--ranking RANKING] [--cell-assign CELL_ASSIGN] [--snv-assign SNV_ASSIGN] [--q_y Q_Y] [--q_z Q_Z] [-v] [-d DRAW] -t TREE
-                [--prior PRIOR] [--map-assign] [--pickle PICKLE]
+usage: arborist [-h] -R READ_COUNTS -Y SNV_CLUSTERS -T TREES [--edge-delim EDGE_DELIM] [--add-normal] [--alpha ALPHA] [--max-iter MAX_ITER] [--prior PRIOR]
+                [--pickle PICKLE] [-d DRAW] -t TREE [--ranking RANKING] [--cell-assign CELL_ASSIGN] [--snv-assign SNV_ASSIGN] [--q_y Q_Y] [--q_z Q_Z] [-v]
 
 Arborist: a method to rank SNV clonal trees using scDNA-seq data.
 
 options:
   -h, --help            show this help message and exit
   -R READ_COUNTS, --read_counts READ_COUNTS
-                        Path to read counts CSV file with columns 'snv', 'cell', 'cluster', 'total', 'alt'
+                        Path to read counts CSV file with columns 'snv', 'cell', 'total', 'alt'
+  -Y SNV_CLUSTERS, --snv-clusters SNV_CLUSTERS
+                        Path to SNV clusters CSV file with unlabeled columns 'snv', 'cluster'. The order of columns matters
   -T TREES, --trees TREES
                         Path to file containing all candidate trees to be ranked.
+  --edge-delim EDGE_DELIM
+                        edge delimiter in candidate tree file.
+  --add-normal          flag to add a normal clone if input trees do not already contain them
   --alpha ALPHA         Per base sequencing error
-  --max-iter MAX_ITER   max number of iterations.
-  --ranking RANKING     Path to where tree ranking output should be saved.
+  --max-iter MAX_ITER   max number of iterations
+  --prior PRIOR         prior (gamma) on input SNV cluster assignment
+  --pickle PICKLE       path to where all pickled tree fits should be saved.
+  -d DRAW, --draw DRAW  Path to where the tree visualization should be saved
+  -t TREE, --tree TREE  Path to save the top ranked tree as a txt file.
+  --ranking RANKING     Path to where tree ranking output should be saved
   --cell-assign CELL_ASSIGN
-                        Path to where cell assignments output should be saved.
+                        Path to where the MAP cell-to-clone labels should be saved
   --snv-assign SNV_ASSIGN
-                        Path to where snv assignments output should be saved.
+                        Path to where the MAP SNV-to-cluster labels should be saved.
   --q_y Q_Y             Path to where the approximate SNV posterior should be saved
   --q_z Q_Z             Path to where the approximate cell posterior should be saved
   -v, --verbose         Print verbose output
-  -d DRAW, --draw DRAW  Path to save the tree image
-  -t TREE, --tree TREE  Path to save the top ranked tree file.
-  --prior PRIOR         prior (gamma) on input SNV cluster assignment
-  --map-assign
-  --pickle PICKLE       path to where all pickled tree fits should be saved.
 ```
 
 #### Example
+The following is a minimal `arborist` example with default parameters and no output files to test the installation.
 ```bash
-   arborist -R {read_count_fname} -T {trees_fname} \
-   --alpha 0.001 --ranking {output_tree_rank_fname} \
-   --draw {output_png_or_dot_fname} \
-   --cell-assign {output_cell_assignment_fname} --verbose
+   arborist -R example/input/read_counts.csv \
+   -T example/input/candidate_trees.txt \
+   -Y example/input/input_clustering.csv \
 ```
 
-### CMB CLI tool usage
+This example demonstrates how to modify parameters and write relevant output files. 
+```bash
+   arborist -R example/input/read_counts.csv \
+   -T example/input/candidate_trees.txt \
+   -Y example/input/input_clustering.csv \
+   --prior 0.7  \
+   --alpha 0.001 \
+   --ranking example/output/tree_rankings.csv \
+   --draw example/output/best_tree.png \
+   --cell-assign example/output/cell_to_clone_labels.csv \
+   --snv-assign example/output/snv_to_cluster_labels.csv 
+```
+
+<!-- ### CMB CLI tool usage
 ```
 cmb -h                                                                                        
 usage: cmb [-h] -R READ_COUNTS -T TREES [--cell-assign CELL_ASSIGN] [--sapling] [--min-cells MIN_CELLS] [-o OUT] [--conipher]
@@ -273,4 +302,4 @@ print(cmb_df.head())
 ```
 
 
-
+ -->

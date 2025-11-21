@@ -4,11 +4,13 @@ import numpy as np
 import numba
 from numba import njit, prange
 from scipy.stats import binom
-from collections import defaultdict
 from .utils import read_trees, visualize_tree
 from .treefit import TreeFit
 import networkx as nx
+import warnings
 
+
+warnings.filterwarnings("ignore")
 numba.set_num_threads(10)
 
 
@@ -24,9 +26,23 @@ def parse_arguments() -> argparse.Namespace:
         "-Y",
         "--snv-clusters",
         required=True,
-        help="Path to SNV clusters CSV file with columns 'snv', 'cluster'"
+        help="Path to SNV clusters CSV file with unlabeled columns 'snv', 'cluster'. The order of columns matters"
     )
-    parser.add_argument("-T", "--trees", required=True, help="Path to file containing all candidate trees to be ranked.")
+    parser.add_argument(
+        "-T", 
+        "--trees", 
+        required=True, 
+        help="Path to file containing all candidate trees to be ranked."
+    )
+    parser.add_argument(
+         "--edge-delim", required=False, type=str, default=" ", help="edge delimiter in candidate tree file."
+    )
+    parser.add_argument(
+        "--add-normal",
+        required=False,
+        action="store_true",
+        help="flag to add a normal clone if input trees do not already contain them",
+    )
     parser.add_argument(
         "--alpha",
         required=False,
@@ -34,43 +50,48 @@ def parse_arguments() -> argparse.Namespace:
         default=0.001,
         help="Per base sequencing error",
     )
-    # parser.add_argument(
-    #     "--normal",
-    #     required=False,
-    #     type=int,
-    #     default=0,
-    #     help="node id of the normal clone",
-    # ),
-    parser.add_argument(
-        "--add-normal",
-        required=False,
-        action="store_true",
-        help="add a normal clone if input trees do not already contain them",
-    )
     parser.add_argument(
         "--max-iter",
         required=False,
         type=int,
         default=25,
-        help="max number of iterations.",
+        help="max number of iterations",
     )
+    parser.add_argument(
+        "--prior",
+        required=False,
+        type=float,
+        default=0.7,
+        help="prior (gamma) on input SNV cluster assignment",
+    )
+    parser.add_argument(
+        "--pickle",
+        type=str,
+        help="path to where all pickled tree fits should be saved.",
+    )
+    parser.add_argument(
+        "-d", "--draw", required=False, type=str, help="Path to where the tree visualization should be saved"
+    )
+    parser.add_argument(
+        "-t", "--tree", required=False, help="Path to save the top ranked tree as a txt file."
+    )    
     parser.add_argument(
         "--ranking",
         required=False,
         type=str,
-        help="Path to where tree ranking output should be saved.",
+        help="Path to where tree ranking output should be saved",
     )
     parser.add_argument(
         "--cell-assign",
         required=False,
         type=str,
-        help="Path to where cell assignments output should be saved.",
+        help="Path to where the MAP cell-to-clone labels should be saved",
     )
     parser.add_argument(
         "--snv-assign",
         required=False,
         type=str,
-        help="Path to where snv assignments output should be saved.",
+        help="Path to where the MAP SNV-to-cluster labels should be saved.",
     )
     parser.add_argument(
         "--q_y",
@@ -85,40 +106,18 @@ def parse_arguments() -> argparse.Namespace:
         help="Path to where the approximate cell posterior should be saved",
     )
     parser.add_argument(
-        "--genotypes",
-        required=False,
-        type=str,
-        help="Path to where the inferred node genotypes should be saved",
-    )
-    parser.add_argument(
         "-v", "--verbose", help="Print verbose output", action="store_true"
     )
-    parser.add_argument(
-        "-d", "--draw", required=False, type=str, help="Path to save the tree image"
-    )
-    parser.add_argument(
-        "-t", "--tree", required=True, help="Path to save the top ranked tree file."
-    )
-    parser.add_argument(
-         "--edge-delim", required=False, type=str, default=" ", help="edge delimiter in candidate tree file."
-    )
-    parser.add_argument(
-        "--prior",
-        required=False,
-        type=float,
-        default=0.7,
-        help="prior (gamma) on input SNV cluster assignment",
-    )
-    parser.add_argument("--map-assign", action="store_true")
-    parser.add_argument(
-        "--pickle",
-        type=str,
-        help="path to where all pickled tree fits should be saved.",
-    )
+
 
     return parser.parse_args()
 
-
+   # parser.add_argument(
+    #     "--genotypes",
+    #     required=False,
+    #     type=str,
+    #     help="Path to where the inferred node genotypes should be saved",
+    # )
 @njit
 def soft_max(arr):
     """
@@ -914,7 +913,7 @@ def rank_trees(
 
     #valid SNVs are SNVs that have at least one variant read across all cells 
     #otherwise we have no signal to place them in the tree
-    print(f"Number of valid SNVs:  {len(valid_snvs)}")
+  
     read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
 
     # appends columns log_absent and log_present to read_counts
@@ -1021,8 +1020,7 @@ def main():
 
   
     candidate_trees = read_trees(args.trees, sep=args.edge_delim)
-    for t in candidate_trees:
-            print(t)
+
 
     if args.add_normal:
         print("appending normal clone to trees...")
@@ -1034,8 +1032,7 @@ def main():
             tree.add_edge(normal, root)
             cand_tree_with_root.append(list(tree.edges))
         candidate_trees=cand_tree_with_root
-        for t in candidate_trees:
-            print(t)
+
 
  
 
@@ -1049,8 +1046,10 @@ def main():
         verbose=args.verbose,
         max_iter=args.max_iter,
         gamma=args.prior,
-        update_snvs=not args.map_assign,
+        update_snvs=True,
     )
+
+
 
     if args.draw:
 
@@ -1082,8 +1081,11 @@ def main():
     if args.tree:
         tfit.save_tree(args.tree)
 
-    if args.genotypes:
-        tfit.save_genotypes(args.genotypes)
+    # if args.genotypes:
+    #     tfit.save_genotypes(args.genotypes)
 
     if args.pickle:
         pd.to_pickle(all_fits, args.pickle)
+
+    print("\n-----------Arborist complete!-----------\n")
+    print(tfit)
