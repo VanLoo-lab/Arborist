@@ -242,12 +242,30 @@ from arborist import read_trees, arborist
 #read the trees in as edge lists 
 candidate_trees = read_trees("example/input/candidate_trees.txt")
 print(f"Candidate set size: {len(candidate_trees)}")
+# Candidate set size: 30
 
 read_counts = pd.read_csv("example/input/read_counts.csv")
 read_counts.head()
+"""
+>>> read_counts.head()
+   snv  cell  alt  total
+0    0     4    0      1
+1    0     5    0      1
+2    0    29    0      1
+3    0    45    0      1
+"""
 
 snv_clusters = pd.read_csv("example/input/input_clustering.csv", header=None, names=["snv", "cluster"]) 
-snv_cluster.head()
+snv_clusters.head()
+"""
+>>> snv_clusters.head()
+   snv  cluster
+0  108        2
+1  123        2
+2  176        2
+3  289        2
+4  452        2
+"""
 
 ranking, best_fit, all_fits =arborist(
     tree_list = candidate_trees,
@@ -286,9 +304,9 @@ y = best_fit.map_assign_y()
 y.head()
 
 qz = best_fit.q_z_df()
-print(qz.head())
+qz.head()
 qy = best_fit.q_y_df()
-print(qy.head())
+qy.head()
 
 
 ```
