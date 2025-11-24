@@ -199,6 +199,20 @@ The following is a minimal `arborist` example with default parameters and no out
    -Y example/input/input_clustering.csv 
 ```
 
+If everything installed correctly you should see the following printout:
+```
+-----------Arborist complete!-----------
+
+Tree index 0
+ELBO: -311397.27
+ 2->1
+ 2->3
+ 2->4
+ 2->5
+ 3->6
+ 0->2
+```
+
 This example demonstrates how to modify parameters and write relevant output files. 
 ```bash
    arborist -R example/input/read_counts.csv \

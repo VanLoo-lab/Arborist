@@ -28,7 +28,7 @@ class TreeFit:
         self.idx_to_cluster = {v: k for k,v in self.cluster_to_idx.items()}
 
     def __str__(self):
-        mystr=  f"ELBO: {self.elbo}\nTree Index: {self.tree_idx}\n"
+        mystr=  f"Tree index {self.tree_idx}\nELBO: {self.elbo:.2f}\n"
         for u,v in self.tree:
             mystr+= f" {u}->{v}\n"
         return mystr
