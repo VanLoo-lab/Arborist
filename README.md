@@ -13,6 +13,7 @@ Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing d
     - [Output Data](#output-files)
 - [Usage](#usage)
     - [Arborist CLI tool](#arborist-cli-tool)
+    - [Arborist Python Package](#arborist-package)
     <!-- - [`arborist` package](#arborist-package) -->
 - [Example](#example)
 <!-- 
@@ -232,7 +233,7 @@ This example demonstrates how to modify parameters and write relevant output fil
 
 ## Arborist package
 
-Arborist is also a Python package that is easy to use. Below is an example usage.
+Arborist is also a Python package. Below is an example of how to use it.
 
 ```python
 import pandas as pd 
