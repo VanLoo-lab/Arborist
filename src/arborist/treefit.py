@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 import pygraphviz as pgv
-import networkx as nx 
+import networkx as nx
 from collections import defaultdict
 
 
@@ -19,26 +19,25 @@ class TreeFit:
     q_y: np.ndarray
     cell_to_idx: dict
     snv_to_idx: dict
-    clone_to_idx: dict 
+    clone_to_idx: dict
     cluster_to_idx: dict
 
-
     def __post_init__(self):
-        self.idx_to_clone = {v: k for k,v in self.clone_to_idx.items()}
-        self.idx_to_cluster = {v: k for k,v in self.cluster_to_idx.items()}
+        self.idx_to_clone = {v: k for k, v in self.clone_to_idx.items()}
+        self.idx_to_cluster = {v: k for k, v in self.cluster_to_idx.items()}
 
     def __str__(self):
-        mystr=  f"Tree index {self.tree_idx}\nELBO: {self.elbo:.2f}\n"
-        for u,v in self.tree:
-            mystr+= f" {u}->{v}\n"
+        mystr = f"Tree {self.tree_idx}\nELBO: {self.elbo:.2f}\n"
+        for u, v in self.tree:
+            mystr += f" {u}->{v}\n"
         return mystr
 
-    def convert_q_to_dataframe(self, q, row_dict, col_dict):
+    def convert_q_to_dataframe(self, q, row_dict, col_dict, prefix="clone"):
         """
         converts q to a dataframe
         """
         df = pd.DataFrame(q)
-        df.columns = [f"clone_{col_dict[i]}" for i in range(q.shape[1])]
+        df.columns = [f"{prefix}_{col_dict[i]}" for i in range(q.shape[1])]
         df.index.name = "id"
         df.reset_index(inplace=True)
         label_dict = {val: key for key, val in row_dict.items()}
@@ -47,12 +46,12 @@ class TreeFit:
         return df
 
     def q_z_df(self):
-        df = self.convert_q_to_dataframe(self.q_z, self.cell_to_idx, self.idx_to_clone)
+        df = self.convert_q_to_dataframe(self.q_z, self.cell_to_idx, self.idx_to_clone, prefix="clone")
 
         return df
 
     def q_y_df(self):
-        df = self.convert_q_to_dataframe(self.q_y, self.snv_to_idx, self.idx_to_cluster)
+        df = self.convert_q_to_dataframe(self.q_y, self.snv_to_idx, self.idx_to_cluster, prefix="cluster")
 
         return df
 
@@ -65,7 +64,7 @@ class TreeFit:
         assigns cell to the maximum a posteriori (MAP) clone/cluster
         """
         q_assign = q.argmax(axis=1)
-        q_assign = [ assign_dict[val] for val in q_assign ]
+        q_assign = [assign_dict[val] for val in q_assign]
 
         q_df = pd.DataFrame(q_assign, columns=["assignment"])
         q_df.index.name = "id"
@@ -145,57 +144,59 @@ class TreeFit:
 
         elif output_file.endswith(".png"):
             graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
-    
-    def save_genotypes(self,fname, x=1, y=1):
+
+    def save_genotypes(self, fname, x=1, y=1):
         snv_to_cluster_df = self.map_assign_y()
-        snv_to_cluster = dict(zip(snv_to_cluster_df["id"], snv_to_cluster_df["assignment"]))
+        snv_to_cluster = dict(
+            zip(snv_to_cluster_df["id"], snv_to_cluster_df["assignment"])
+        )
         tree = nx.DiGraph(self.tree)
-        root = [n for n in tree if len(list(tree.predecessors(n)))==0][0]
-        geno_dict ={n: {} for n in tree}
-  
+        root = [n for n in tree if len(list(tree.predecessors(n))) == 0][0]
+        geno_dict = {n: {} for n in tree}
+
         for node in tree:
             for cluster in tree:
                 if cluster != root:
-                    if node==cluster or tree.has_predecessor(node,cluster):
-                        geno_dict[node][cluster]= 1
+                    if node == cluster or tree.has_predecessor(node, cluster):
+                        geno_dict[node][cluster] = 1
                     else:
-                        geno_dict[node][cluster]= 0
+                        geno_dict[node][cluster] = 0
                 else:
-                    geno_dict[node][cluster]= 0 
-        geno_list= []
+                    geno_dict[node][cluster] = 0
+        geno_list = []
 
         for n in tree:
             for j, clust in snv_to_cluster.items():
-                geno_list.append([n, j, x,y,geno_dict[n][clust], 0, 1])
-        geno_df = pd.DataFrame(geno_list, columns=["node", "snv", "x", "y", "xbar", "ybar", "segment"])
+                geno_list.append([n, j, x, y, geno_dict[n][clust], 0, 1])
+        geno_df = pd.DataFrame(
+            geno_list, columns=["node", "snv", "x", "y", "xbar", "ybar", "segment"]
+        )
         geno_df.to_csv(fname, index=False)
 
-    
     def cell_entropy(self, eps=1e-12):
-        row_dict= self.cell_to_idx
+        row_dict = self.cell_to_idx
         h_z = self.compute_hz(eps)
         df = pd.DataFrame(h_z)
-        df.columns = ['entropy']
+        df.columns = ["entropy"]
         df.index.name = "id"
         df.reset_index(inplace=True)
         label_dict = {val: key for key, val in row_dict.items()}
         df["id"] = df["id"].map(label_dict)
 
         return df
-    
+
     def snv_cluster_entropy(self, eps=1e-12):
-        row_dict= self.snv_to_idx
+        row_dict = self.snv_to_idx
         h_y = self.compute_hy(eps)
         assert h_y.shape[0] == len(row_dict)
         df = pd.DataFrame(h_y)
-        df.columns = ['entropy']
+        df.columns = ["entropy"]
         df.index.name = "id"
         df.reset_index(inplace=True)
         label_dict = {val: key for key, val in row_dict.items()}
         df["id"] = df["id"].map(label_dict)
 
         return df
-
 
     def compute_hz(self, eps=1e-12):
 

@@ -14,15 +14,17 @@ from .utils import (
     get_nodes,
 )
 
+
 def clade_pooled_vaf(df, cells, snvs):
     df = df[df["cell"].isin(cells)]
     df = df[df["snv"].isin(snvs)]
     df_vaf = (
         df.groupby("snv")
-        .apply(lambda x: (x["alt"]).sum()/ x["total"].sum())
+        .apply(lambda x: (x["alt"]).sum() / x["total"].sum())
         .reset_index(name="vaf")
     )
     return df_vaf
+
 
 def compute_cmb(df, cells, snvs):
     df = df[df["cell"].isin(cells)]
@@ -111,6 +113,8 @@ def clade_vaf(n, cell_mapping, snvs, T, df, min_cells=50):
     df["clade"] = n
 
     return df
+
+
 # def cmb(ca_df, trees, clade_snvs, read_counts, min_cells=10):
 
 #     tree_index = ca_df["tree"].unique()
@@ -139,23 +143,20 @@ def clade_vaf(n, cell_mapping, snvs, T, df, min_cells=50):
 #     return cmb_df
 
 
-def cmb( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
+def cmb(phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
 
     clade_snvs = defaultdict(list)
     for j, cluster in psi.items():
         clade_snvs[cluster].append(j)
 
-
     tree_dict = edge_list_to_adj_list(tree)
-
-
 
     cell_mapping = defaultdict(list)
     for cell, node in phi.items():
         cell_mapping[node].append(cell)
 
     cmb_list = []
-    
+
     for n in get_nodes(tree_dict):
         snvs = clade_snvs[n]
         if len(snvs) > min_snvs:
@@ -168,28 +169,24 @@ def cmb( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
         #     print(f"skipping clade {n} due to insufficient SNVs")
 
     cmb_df = pd.concat(cmb_list)
-   
 
     return cmb_df
 
 
-def pooled_vaf( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
+def pooled_vaf(phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
 
     clade_snvs = defaultdict(list)
     for j, cluster in psi.items():
         clade_snvs[cluster].append(j)
 
-
     tree_dict = edge_list_to_adj_list(tree)
-
-
 
     cell_mapping = defaultdict(list)
     for cell, node in phi.items():
         cell_mapping[node].append(cell)
 
     df_list = []
-    
+
     for n in get_nodes(tree_dict):
         snvs = clade_snvs[n]
         if len(snvs) > min_snvs:
@@ -202,9 +199,9 @@ def pooled_vaf( phi, psi, tree, read_counts, min_cells=10, min_snvs=100):
         #     print(f"skipping clade {n} due to insufficient SNVs")
 
     vaf_df = pd.concat(df_list)
-   
 
     return vaf_df
+
 
 def main():
     args = parse_args()
@@ -217,8 +214,6 @@ def main():
     clade_snvs = defaultdict(list)
     for j, cluster in psi.items():
         clade_snvs[cluster].append(j)
-
-  
 
     trees = read_trees(args.trees, sep=args.edge_delim)
 

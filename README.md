@@ -158,9 +158,10 @@ After installation, `arborist` can be run via the command line with usage as sho
 
 ### Arborist CLI tool
 ```bash
-$ arborist -h
+$ arborist -h                                                        
 usage: arborist [-h] -R READ_COUNTS -Y SNV_CLUSTERS -T TREES [--edge-delim EDGE_DELIM] [--add-normal] [--alpha ALPHA] [--max-iter MAX_ITER] [--prior PRIOR]
-                [--pickle PICKLE] [-d DRAW] -t TREE [--ranking RANKING] [--cell-assign CELL_ASSIGN] [--snv-assign SNV_ASSIGN] [--q_y Q_Y] [--q_z Q_Z] [-v]
+                [--pickle PICKLE] [-d DRAW] [-t TREE] [--ranking RANKING] [--cell-assign CELL_ASSIGN] [--snv-assign SNV_ASSIGN] [--q_y Q_Y] [--q_z Q_Z]
+                [-j THREADS] [-v]
 
 Arborist: a method to rank SNV clonal trees using scDNA-seq data.
 
@@ -188,6 +189,8 @@ options:
                         Path to where the MAP SNV-to-cluster labels should be saved.
   --q_y Q_Y             Path to where the approximate SNV posterior should be saved
   --q_z Q_Z             Path to where the approximate cell posterior should be saved
+  -j THREADS, --threads THREADS
+                        Number of threads to use
   -v, --verbose         Print verbose output
 ```
 
@@ -226,6 +229,68 @@ This example demonstrates how to modify parameters and write relevant output fil
    --snv-assign example/output/snv_to_cluster_labels.csv 
 ```
 
+
+## Arborist package
+
+Arborist is also a Python package that is easy to use. Below is an example usage.
+
+```python
+import pandas as pd 
+from arborist import read_trees, arborist 
+
+#read the trees in as edge lists 
+candidate_trees = read_trees("example/input/candidate_trees.txt")
+print(f"Candidate set size: {len(candidate_trees)}")
+
+read_counts = pd.read_csv("example/input/read_counts.csv")
+read_counts.head()
+
+snv_clusters = pd.read_csv("example/input/input_clustering.csv", header=None, names=["snv", "cluster"]) 
+snv_cluster.head()
+
+ranking, best_fit, all_fits =arborist(
+    tree_list = candidate_trees,
+    read_counts = read_counts,
+    snv_clusters = snv_clusters,
+    alpha = 0.001,
+    max_iter = 10,
+    tolerance = 1,
+    gamma= 0.7,
+    add_normal = False,
+    threads = 10,
+    verbose = False
+)
+
+print(best_fit)
+"""
+Tree 0
+ELBO: -311397.27
+ 2->1
+ 2->3
+ 2->4
+ 2->5
+ 3->6
+ 0->2
+"""
+
+```
+
+`TreeFit` objects can be used to obtain MAP assignments of cell-to-clone labels (`z`) or SNV-to-cluster labels (`y`) as well as explore the approximate posterior distributions (`qz`) and (`qy`)
+```python
+
+#TreeFit 
+z = best_fit.map_assign_z()
+z.head()
+y = best_fit.map_assign_y()
+y.head()
+
+qz = best_fit.q_z_df()
+print(qz.head())
+qy = best_fit.q_y_df()
+print(qy.head())
+
+
+```
 <!-- ### CMB CLI tool usage
 ```
 cmb -h                                                                                        

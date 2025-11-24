@@ -8,14 +8,25 @@ from .utils import read_trees, visualize_tree
 from .treefit import TreeFit
 import networkx as nx
 import warnings
+import logging
 
 
-warnings.filterwarnings("ignore")
-numba.set_num_threads(10)
+logging.basicConfig(
+    format="{asctime} - {levelname} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
+
+
+# warnings.filterwarnings("ignore")
+
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Arborist: a method to rank SNV clonal trees using scDNA-seq data.")
+    parser = argparse.ArgumentParser(
+        description="Arborist: a method to rank SNV clonal trees using scDNA-seq data."
+    )
     parser.add_argument(
         "-R",
         "--read_counts",
@@ -26,16 +37,20 @@ def parse_arguments() -> argparse.Namespace:
         "-Y",
         "--snv-clusters",
         required=True,
-        help="Path to SNV clusters CSV file with unlabeled columns 'snv', 'cluster'. The order of columns matters"
+        help="Path to SNV clusters CSV file with unlabeled columns 'snv', 'cluster'. The order of columns matters",
     )
     parser.add_argument(
-        "-T", 
-        "--trees", 
-        required=True, 
-        help="Path to file containing all candidate trees to be ranked."
+        "-T",
+        "--trees",
+        required=True,
+        help="Path to file containing all candidate trees to be ranked.",
     )
     parser.add_argument(
-         "--edge-delim", required=False, type=str, default=" ", help="edge delimiter in candidate tree file."
+        "--edge-delim",
+        required=False,
+        type=str,
+        default=" ",
+        help="edge delimiter in candidate tree file.",
     )
     parser.add_argument(
         "--add-normal",
@@ -70,11 +85,18 @@ def parse_arguments() -> argparse.Namespace:
         help="path to where all pickled tree fits should be saved.",
     )
     parser.add_argument(
-        "-d", "--draw", required=False, type=str, help="Path to where the tree visualization should be saved"
+        "-d",
+        "--draw",
+        required=False,
+        type=str,
+        help="Path to where the tree visualization should be saved",
     )
     parser.add_argument(
-        "-t", "--tree", required=False, help="Path to save the top ranked tree as a txt file."
-    )    
+        "-t",
+        "--tree",
+        required=False,
+        help="Path to save the top ranked tree as a txt file.",
+    )
     parser.add_argument(
         "--ranking",
         required=False,
@@ -106,18 +128,26 @@ def parse_arguments() -> argparse.Namespace:
         help="Path to where the approximate cell posterior should be saved",
     )
     parser.add_argument(
+        "-j",
+        "--threads",
+        required=False,
+        default= 10,
+        type=int,
+        help="Number of threads to use",
+    )
+    parser.add_argument(
         "-v", "--verbose", help="Print verbose output", action="store_true"
     )
 
-
     return parser.parse_args()
 
-   # parser.add_argument(
-    #     "--genotypes",
-    #     required=False,
-    #     type=str,
-    #     help="Path to where the inferred node genotypes should be saved",
-    # )
+
+# parser.add_argument(
+#     "--genotypes",
+#     required=False,
+#     type=str,
+#     help="Path to where the inferred node genotypes should be saved",
+# )
 @njit
 def soft_max(arr):
     """
@@ -258,7 +288,7 @@ def compute_kl_divergence(q_y, q_y_init):
     Returns
     -------
     float
-        KL divergence D_KL(q_y || q_y_init).
+        KL divergence KL(q_y || q_y_init).
     """
     kl = 0.0
     for j in range(q_y.shape[0]):
@@ -458,7 +488,9 @@ def build_sparse_input(df, cell_to_idx, snv_to_idx):
     return cell_idx, snv_idx, log_matrix
 
 
-def enumerate_presence(tree: list, clone_to_idx: dict, cluster_to_idx: dict) -> np.array:
+def enumerate_presence(
+    tree: list, clone_to_idx: dict, cluster_to_idx: dict
+) -> np.array:
     """
     Enumerates the presence of each clone in the genotype matrix.
 
@@ -479,13 +511,12 @@ def enumerate_presence(tree: list, clone_to_idx: dict, cluster_to_idx: dict) -> 
     T = nx.DiGraph(tree)
 
     presence = np.zeros((len(cluster_to_idx), len(clone_to_idx)), dtype=int)
-    # clone_to_idx = {r: i for i, r in enumerate(clones)}
 
-    for  cluster_p, idx_p in cluster_to_idx.items():
+    for cluster_p, idx_p in cluster_to_idx.items():
         desc = nx.descendants(T, cluster_p) | {cluster_p}
         for d in desc:
-            presence[idx_p, clone_to_idx[d] ] = 1
-    # print(presence)
+            presence[idx_p, clone_to_idx[d]] = 1
+
     return presence
 
 
@@ -500,8 +531,8 @@ def initialize_q_y(
     snv_clusters : pd.DataFrame
         Must have columns 'snv' and 'cluster', where 'cluster' is the
         initial hard assignment ψ(snv) in [clusters].
-    clusters : list
-        List of cluster identifiers (length k).
+    clusters_to_idx : dict
+        Mapping of clusters to their index
     snv_to_idx : dict
         Mapping from SNV identifiers to row indices 0..m-1 in the output array.
     gamma : float
@@ -510,7 +541,7 @@ def initialize_q_y(
     Returns
     -------
     np.ndarray
-        q_y[j, p] = gamma if ψ(j) == p else (1-gamma)/(k-1).
+        q_y[j, p] = gamma if psi(j) == p else (1-gamma)/(k-1).
     """
     # Build a quick map: snv -> its hard cluster
     cluster_map = dict(zip(snv_clusters["snv"], snv_clusters["cluster"]))
@@ -528,7 +559,6 @@ def initialize_q_y(
             assigned = None
         else:
             assigned = cluster_map[snv]
-        
 
         for cluster, idx in cluster_to_idx.items():
             if not assigned or assigned not in cluster_to_idx:
@@ -668,7 +698,7 @@ def run_variational_inference(
     Parameters
     ----------
     presence : np.ndarray
-        Presence/absence matrix for SNV clusters and clones.
+        Presence/absence binary matrix for SNV clusters and clones describing the clone tree.
     log_like_matrix_cell_sort : np.ndarray
         Log-likelihoods sorted by cell.
     log_like_matrix_snv_sort : np.ndarray
@@ -790,7 +820,7 @@ def precompute_log_likelihoods(
     read_counts: pd.DataFrame, error_rate=0.001
 ) -> pd.DataFrame:
     """
-    Preprocesses the read counts by precomputing the log probabilities.
+    Preprocesses the read counts by precomputing the log probabilities for both presence and absence.
 
     Parameters
     ----------
@@ -804,14 +834,19 @@ def precompute_log_likelihoods(
     tuple
         (read_counts_with_logs, cell_to_idx, snv_to_idx)
     """
-    read_counts["log_absent"] = binom.logpmf(
-        read_counts["alt"], read_counts["total"], error_rate / 3
-    )
-    read_counts["log_present"] = binom.logpmf(
+
+    read_counts.loc[:, "log_present"] = binom.logpmf(
         read_counts["alt"],
         read_counts["total"],
         0.5 - error_rate + 0.5 * error_rate / 3,
     )
+
+    read_counts.loc[:,"log_absent"] = binom.logpmf(
+        read_counts["alt"], read_counts["total"], error_rate / 3
+    )
+
+
+
 
     cells = read_counts["cell"].unique()
     snvs = read_counts["snv"].unique()
@@ -819,8 +854,32 @@ def precompute_log_likelihoods(
     cell_to_idx = {cell: idx for idx, cell in enumerate(cells)}
     snv_to_idx = {snv: idx for idx, snv in enumerate(snvs)}
 
-
     return read_counts, cell_to_idx, snv_to_idx
+
+
+def add_normal_clone(candidate_trees: list):
+    """
+     Adds a normal clone at the root of each tree in the candidate set.
+
+     Parameters
+     ----------
+     cadidate_trees : a list of lists of edge tuples (u,v)
+         list of edge lists for each candidate tree in the set
+
+     Returns
+     -------
+    list
+        a list of lists of edge tuples (u,v) with a new edge appended from the normal cell to the clonal cluster
+    """
+    cand_tree_with_root = []
+    for edge_list in candidate_trees:
+        tree = nx.DiGraph(edge_list)
+        root = [n for n in tree if len(list(tree.predecessors(n))) == 0][0]
+        normal = min(list(tree.nodes)) - 1
+        tree.add_edge(normal, root)
+        cand_tree_with_root.append(list(tree.edges))
+    candidate_trees = cand_tree_with_root
+    return candidate_trees
 
 
 def tree_to_clone_set(tree: list) -> list:
@@ -844,7 +903,7 @@ def tree_to_clone_set(tree: list) -> list:
     return clones
 
 
-def rank_trees(
+def arborist(
     tree_list: list,
     read_counts: pd.DataFrame,
     snv_clusters: pd.DataFrame,
@@ -852,46 +911,71 @@ def rank_trees(
     max_iter: int = 10,
     tolerance: float = 1,
     gamma=0.7,
-    update_snvs=True,
-    verbose: bool = False
+    add_normal=False,
+    threads = 10,
+    verbose: bool = False,
 ) -> tuple:
     """
-    Rank SNV phylogenetic trees based on evidence lower bound given scDNA-seq read count data.
-    This function processes a list of clonal trees and their associated read counts to calculate
-    the likelihood of each tree.
+    Rank SNV phylogenetic trees based on evidence lower bound (ELBO) given scDNA-seq read count data,
+    and an initial SNV clustering.
+    This function processes a list of clonal trees and their associated read counts and usese variational inference to
+    compute the evidence lower bound.
+
     Parameters
     ----------
     tree_list : list
         A list of phylogenetic trees to be ranked.
     read_counts : pandas.DataFrame
-        A DataFrame containing columns ["snv", "cell", "alt", "total", "cluster"]
-    alpha : float, optional
+        A DataFrame containing named columns ["snv", "cell", "alt", "total"] in any order
+    snv_cluster: pandas.DataFrame
+        A DataFrame containing named columns ["snv", "cluster"] in any order
+    alpha : float, optional (d)
         The per-base sequencing error rate for computing the likelihood of the tree given the read counts (default is 0.001).
-    topn : int, optional
-        The number of top-ranked trees to return. If None, all trees are returned (default is None).
+    max_iter : int, optional
+        The max number of iterations for coordinate ascent variational inference (default is 10).
+    tolerance : float, optional
+        The delta to use for convergence of the ELBO between consecutive interations (default is 1)
+    gamma : float, optional
+        The probability mass to put on the initial SNV cluster assignment (default is 0.7)
+    add_normal : boolean, optional
+        A boolean indicating is a normal clone should be appended to each tree in the candate set (default is False)
+    verbose : boolean, optional
+        A boolean indicated if more extensive logging is desired (default is false)
+
     Returns
     -------
     ranked_trees : pandas.DataFrame
-        A DataFrame containing the top-ranked trees with their likelihoods and posterior probabilities.
-    filtered_assignments : pandas.DataFrame
-        A DataFrame containing cell assignments for the top-ranked trees, including clone and tree information.
-    Entropy : pandas.DataFrame
-        A DataFrame containing entropy values for each cell, along with associated tree and clone information.
+        A DataFrame containing the the ranking of all candidate trees by their ELBO
+    best_fit : TreeFit
+        A TreeFit object containing the fit, qz and qy for the top ranked clone tree
+    all_fits : Dictionary of TreeFit objects
+        A dictionary with tree index as key and TreeFit object as value containing the fit for each clone tree
+
     Notes
-    -----
-    - The cell assignment posterior probabilities are normalized using the log-sum-exp to avoid numerical instability.
-    - Entropy is calculated for each cell and each tree based on the posterior probabilities of assignment to each clones.
+    -------
+    Only SNVs that have at least one variant read count across all cells with be included in the inference
+
     Examples
     --------
-    >>> ranked_trees, filtered_assignments, all_fits = rank_trees(tree_list, read_counts, alpha=0.001)
+    >>> ranking_df, best_fit, all_fits = rank_trees(tree_list, read_counts, snv_clusters, alpha=0.001)
 
     """
 
-    tree = tree_list[0]
+    if verbose:
+        logger = logging.getLogger()
     
-    #assume root is normal
+    numba.set_num_threads(threads)
+
+    if add_normal:
+        if verbose:
+            logger.info(f"Appending normal clone to candidate trees...")
+        tree_list = add_normal_clone(tree_list)
+
+    tree = tree_list[0]
+
+    # assume root is normal
     temp_tree = nx.DiGraph(tree)
-    normal = [n for n in temp_tree if temp_tree.in_degree(n)==0][0]
+    normal = [n for n in temp_tree if temp_tree.in_degree(n) == 0][0]
     clone_set = tree_to_clone_set(tree)
     for tree in tree_list:
         if tree_to_clone_set(tree) != clone_set:
@@ -900,26 +984,36 @@ def rank_trees(
     clones = list(clone_set)
 
     clusters = [c for c in clones if c != normal]
-  
+
     # Filter read_counts to only include cells and SNVs present in the tree
-   
+
     clones.sort()
     clusters.sort()
-    clone_to_idx = {c: i for i,c in enumerate(clones)}
-    cluster_to_idx = {c: i for i,c in enumerate(clusters)}
+    clone_to_idx = {c: i for i, c in enumerate(clones)}
+    cluster_to_idx = {c: i for i, c in enumerate(clusters)}
+
+
+    if verbose:
+        logger.info(f"Removing SNVs with 0 variant reads across all cells...")
 
     alt_sum = read_counts.groupby("snv")["alt"].sum()
     valid_snvs = alt_sum[alt_sum > 0].index
 
-    #valid SNVs are SNVs that have at least one variant read across all cells 
-    #otherwise we have no signal to place them in the tree
-  
-    read_counts = read_counts[read_counts["snv"].isin(valid_snvs)]
+
+    # valid SNVs are SNVs that have at least one variant read across all cells
+    # otherwise we have no signal to place them in the tree
+
+    read_counts = read_counts[read_counts["snv"].isin(valid_snvs)].copy()
 
     # appends columns log_absent and log_present to read_counts
+    if verbose:
+        logger.info(f"Caching log-likelihoods for presence/absence...")
     read_counts, cell_to_idx, snv_to_idx = precompute_log_likelihoods(
         read_counts, alpha
     )
+
+    if verbose:
+        logger.info(f"Initializing the SNV cluster assignment prior...")
     q_y_init = initialize_q_y(snv_clusters, cluster_to_idx, snv_to_idx, gamma)
     cell_idx, snv_idx, log_like_matrix = build_sparse_input(
         read_counts, cell_to_idx, snv_to_idx
@@ -928,49 +1022,38 @@ def rank_trees(
     n_cells = len(cell_to_idx)
     n_snvs = len(snv_to_idx)
     n_clones = len(clones)
-    # cell_ptr, cell_sort_idx = build_index_pointers(cell_idx, snv_idx, n_cells)
-    cell_ptr, cell_idx_sort, snv_index_cell_sort, log_like_matrix_cell_sort = (
+
+
+    cell_ptr, _, snv_index_cell_sort, log_like_matrix_cell_sort = (
         build_index_pointers(
             cell_idx, snv_idx, n_cells, log_like_matrix=log_like_matrix
         )
     )
-    snv_ptr, snv_idx_sort, cell_index_snv_sort, log_like_matrix_snv_sort = (
+    snv_ptr, _ , cell_index_snv_sort, log_like_matrix_snv_sort = (
         build_index_pointers(snv_idx, cell_idx, n_snvs, log_like_matrix=log_like_matrix)
     )
-
-
 
     best_likelihood = -np.inf
     likelihoods = {}
 
     all_tree_fits = {}
 
-    if update_snvs:
-        if verbose:
-            print("Running Arborist in full variational inference mode...")
-        run = run_variational_inference
-    else:
-        print("Running Arborist in cell MAP assignment mode....")
-        run = run_simple_max_likelihood
+    run = run_variational_inference
 
-     
+    if verbose:
+        logger.info(f"Starting Arborist...")
+        logger.info(f"Number of candidate trees: {len(tree)}")
+        logger.info(f"Number of clones: {n_clones}")
+        logger.info(f"Number of SNV clusters: {len(cluster_to_idx)}")
+        logger.info(f"Number of cells: {n_cells}")
+        logger.info(f"Number of SNVs: {n_snvs}")
+    # else:
+    #     print("Running Arborist in cell MAP assignment mode....")
+    #     run = run_simple_max_likelihood
+
     for idx, tree in enumerate(tree_list):
 
-        """
-        # Main function to find cell assignments
-        raw_probability, Cell_assignment_df = (
-            run(genotype_matrix, read_counts, alpha, verbose)
-            find_cell_assignments(read_counts, genotype_matrix, alpha)
-        )
-        """
-
-        if verbose:
-            print(f"Starting tree {idx}...")
-
-
-
         presence = enumerate_presence(tree, clone_to_idx, cluster_to_idx)
-      
 
         expected_log_like, q_z, q_y = run(
             presence,
@@ -997,16 +1080,18 @@ def rank_trees(
             cell_to_idx,
             snv_to_idx,
             clone_to_idx,
-            cluster_to_idx
+            cluster_to_idx,
         )
         all_tree_fits[idx] = tfit
         if verbose:
-            print(f"Tree {idx} fit wtih ELBO: {expected_log_like}")
+            logger.info(f"Tree {idx} fit wtih ELBO: {expected_log_like:.2f}")
         likelihoods[idx] = expected_log_like
         if expected_log_like > best_likelihood:
             best_fit = tfit
             best_likelihood = expected_log_like
 
+    if verbose:
+        logger.info(f"Done fitting all {len(tree_list)} candidate trees!")
     return likelihoods, best_fit, all_tree_fits
 
 
@@ -1014,31 +1099,12 @@ def main():
     args = parse_arguments()
     read_counts = pd.read_csv(args.read_counts)
 
-    #SNV cluster input should include no column names
+    # SNV cluster input should include no column names
     snv_clusters = pd.read_csv(args.snv_clusters, header=None, names=["snv", "cluster"])
 
-
-  
     candidate_trees = read_trees(args.trees, sep=args.edge_delim)
 
-
-    if args.add_normal:
-        print("appending normal clone to trees...")
-        cand_tree_with_root= []
-        for edge_list in candidate_trees:
-            tree = nx.DiGraph(edge_list)
-            root = [n for n in tree if len(list(tree.predecessors(n)))==0][0]
-            normal = min(list(tree.nodes)) - 1
-            tree.add_edge(normal, root)
-            cand_tree_with_root.append(list(tree.edges))
-        candidate_trees=cand_tree_with_root
-
-
- 
-
-
-
-    elbos, tfit, all_fits = rank_trees(
+    elbos, tfit, all_fits = arborist(
         candidate_trees,
         read_counts,
         snv_clusters,
@@ -1046,10 +1112,9 @@ def main():
         verbose=args.verbose,
         max_iter=args.max_iter,
         gamma=args.prior,
-        update_snvs=True,
+        add_normal=args.add_normal,
+        threads = args.threads
     )
-
-
 
     if args.draw:
 
@@ -1087,5 +1152,5 @@ def main():
     if args.pickle:
         pd.to_pickle(all_fits, args.pickle)
 
-    print("\n-----------Arborist complete!-----------\n")
+    print("\n---------------------Arborist complete!---------------------\n")
     print(tfit)
