@@ -54,6 +54,11 @@ pip install .
 
 ```
 
+To test the installation of the CLI tool and Python package, run the following:
+```bash
+arborist -h
+python -c "from arborist import arborist"
+```
 
 ## I/O Data Formats
 
