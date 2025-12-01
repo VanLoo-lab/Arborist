@@ -12,15 +12,15 @@ class TreeFit:
     Solution class to hold the solution to a tree
     """
 
-    tree: list
-    tree_idx: int
-    elbo: float
-    q_z: np.ndarray
-    q_y: np.ndarray
-    cell_to_idx: dict
-    snv_to_idx: dict
-    clone_to_idx: dict
-    cluster_to_idx: dict
+    tree: list   #edge list of tree including normal clone
+    tree_idx: int #index identifier of tree
+    elbo: float #the Evidence Lower Bound (ELBO) computed for the tree
+    q_z: np.ndarray #the inferred approximation to the posterior cell-to-clone label
+    q_y: np.ndarray #the inferred approximation to the posterior SNV-to-cluster label
+    cell_to_idx: dict #internal cell label to index 
+    snv_to_idx: dict #intenal SNV label to index
+    clone_to_idx: dict #internal clone label to index
+    cluster_to_idx: dict #interal SNV cluster label to index 
 
     def __post_init__(self):
         self.idx_to_clone = {v: k for k, v in self.clone_to_idx.items()}
@@ -46,11 +46,17 @@ class TreeFit:
         return df
 
     def q_z_df(self):
+        """
+        Converts q_z numpy array to panda.DataFrame
+        """
         df = self.convert_q_to_dataframe(self.q_z, self.cell_to_idx, self.idx_to_clone, prefix="clone")
 
         return df
 
     def q_y_df(self):
+        """
+        Converts q_z numpy array to panda.DataFrame
+        """
         df = self.convert_q_to_dataframe(self.q_y, self.snv_to_idx, self.idx_to_cluster, prefix="cluster")
 
         return df
@@ -82,17 +88,20 @@ class TreeFit:
 
     def map_assign_y(self):
         """
-        assigns snvs to the maximum a posteriori (MAP) cluster
+        assigns SNVs to the maximum a posteriori (MAP) cluster
         """
         return self.map_assign(self.q_y, self.snv_to_idx, self.idx_to_cluster)
 
     def save_tree(self, fname, sep=" "):
+        """
+        Write the tree as a flat file in the same format as in the input style
+        """
         with open(fname, "w+") as file:
             file.write(f"{len(self.tree)} #edges tree 0\n")
             for u, v in self.tree:
                 file.write(f"{u}{sep}{v}\n")
 
-    def visualize_tree(self, include_scores=False, output_file=None):
+    def visualize_tree(self,  output_file=None):
         """
         Visualizes a tree using Graphviz.
 
@@ -103,33 +112,18 @@ class TreeFit:
             contains two integers representing a parent
             and
             child relationship.
-        cell_assignment : dict of int to int, optional
-            A dictionary mapping each node to a cell number. If provided, the nodes
-            will be labeled by the number of assigned cells.
         output_file : str, optional
             The path to save the visualization. If not provided, the visualization
-            will be displayed on the screen.        "
+            will be displayed on the screen.        
         """
         labels = defaultdict(str)
 
-        if include_scores:
-            cs = self.clade_score()
 
-            for parent, child in self.tree:
-                labels[parent] = f"{parent}\nscore: {cs[parent]:.3f}"
-                labels[child] = f"{child}\nscore: {cs[child]:.3f}"
-        else:
-            for parent, child in self.tree:
-                labels[parent] = f"{parent}"
-                labels[child] = f"{child}"
+        for parent, child in self.tree:
+            labels[parent] = f"{parent}"
+            labels[child] = f"{child}"
 
-        # if cell_assignment:
-        #     cell_mapping = defaultdict(list)
-        #     for node, cell in cell_assignment.items():
-        #         cell_mapping[cell].append(node)
 
-        #     for node, cells in cell_mapping.items():
-        #         labels[node] = f"{node}\n({len(cells)} cells)"
 
         graph = pgv.AGraph(directed=True)
 
@@ -146,6 +140,9 @@ class TreeFit:
             graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
 
     def save_genotypes(self, fname, x=1, y=1):
+        """
+        Write the genotypes of each clone to a file. Default copy numbers (x,y) are (1,1)
+        """
         snv_to_cluster_df = self.map_assign_y()
         snv_to_cluster = dict(
             zip(snv_to_cluster_df["id"], snv_to_cluster_df["assignment"])
@@ -174,6 +171,9 @@ class TreeFit:
         geno_df.to_csv(fname, index=False)
 
     def cell_entropy(self, eps=1e-12):
+        """
+        Computes the entropy of each cell assignment from the approximate variational posterior q_z
+        """
         row_dict = self.cell_to_idx
         h_z = self.compute_hz(eps)
         df = pd.DataFrame(h_z)
@@ -186,6 +186,9 @@ class TreeFit:
         return df
 
     def snv_cluster_entropy(self, eps=1e-12):
+        """
+        Computes the entropy of each SNV assignment from the approximate variational posterior q_y
+        """
         row_dict = self.snv_to_idx
         h_y = self.compute_hy(eps)
         assert h_y.shape[0] == len(row_dict)
@@ -199,30 +202,15 @@ class TreeFit:
         return df
 
     def compute_hz(self, eps=1e-12):
-
+        """
+        Helper function to compute cell entropy
+        """
         h_z = -np.sum(self.q_z * np.log(self.q_z + eps), axis=1) / self.q_z.shape[1]
         return h_z
 
     def compute_hy(self, eps=1e-12):
-
+        """
+        Helper function to compute SNV entropy
+        """
         h_y = -np.sum(self.q_y * np.log(self.q_y + eps), axis=1) / self.q_y.shape[1]
         return h_y
-
-    # def clade_score(self):
-    #     """Return dict """
-    #     # cache descendant clone IDs for O(1) lookup later
-    #     h_z = self.compute_hz()
-    #     h_y = self.compute_hy()
-    #     desc_dict = dict(zip(self.genotype_matrix['clone'], self.genotype_matrix["descendants"]))
-    #     se = {}
-    #     for idx, r in enumerate(self.clones):
-    #         C_e = desc_dict[r]       # clone IDs under the edge
-    #         C_e_indices = [idx_p for idx_p, p in enumerate(self.clones) if p in C_e ]
-    #         # soft weights: probability each item sits somewhere in C_e
-    #         w_cells = self.q_z[:, C_e_indices].sum(1)           # shape (n_cells,)
-    #         w_snvs  = self.q_y[:, C_e_indices].sum(1)           # same for SNVs
-
-    #         num = (w_cells * h_z).sum() + (w_snvs * h_y).sum()
-    #         den = w_cells.sum()       + (w_snvs).sum()
-    #         se[r] = 1.0 - num / den
-    #     return se
