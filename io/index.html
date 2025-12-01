@@ -8,13 +8,11 @@
       
       
       
-        <link rel="canonical" href="https://vanloo-lab.github.io/Arborist/usage/">
+        <link rel="canonical" href="https://vanloo-lab.github.io/Arborist/io/">
       
       
-        <link rel="prev" href="../installation/">
+        <link rel="prev" href="../package-tutorial/">
       
-      
-        <link rel="next" href="../package-tutorial/">
       
       
         
@@ -25,7 +23,7 @@
     
     
       
-        <title>CLI Tool - Arborist</title>
+        <title>I/O Formats - Arborist</title>
       
     
     
@@ -74,7 +72,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#arborist-cli-tool" class="md-skip">
+        <a href="#input-data" class="md-skip">
           Skip to content
         </a>
       
@@ -110,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              CLI Tool
+              I/O Formats
             
           </span>
         </div>
@@ -257,37 +255,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    CLI Tool
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
         
   
   
@@ -303,37 +274,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Examples
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -369,10 +309,35 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../io/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    I/O Formats
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -388,6 +353,91 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#input-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input Data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Input Data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-counts-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read Counts File Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#initial-snv-clustering-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial SNV Clustering File Format
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initial SNV Clustering File Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tree-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tree File Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Data
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -409,8 +459,6 @@
   
   
   
-    
-  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -419,10 +467,66 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#examples" class="md-nav__link">
+  <a href="#input-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Examples
+        Input Data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Input Data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#read-counts-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read Counts File Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#initial-snv-clustering-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Initial SNV Clustering File Format
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Initial SNV Clustering File Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tree-file-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tree File Format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Data
       
     </span>
   </a>
@@ -446,72 +550,127 @@
 
 
 
-<h1 id="arborist-cli-tool">Arborist CLI tool</h1>
-<p>After installation, <code>arborist</code> can be run via the command line with the following usage:</p>
-<pre><code class="language-bash">$ arborist -h                                                        
-usage: arborist [-h] -R READ_COUNTS -Y SNV_CLUSTERS -T TREES [--edge-delim EDGE_DELIM] [--add-normal] [--alpha ALPHA] [--max-iter MAX_ITER] [--prior PRIOR]
-                [--pickle PICKLE] [-d DRAW] [-t TREE] [--ranking RANKING] [--cell-assign CELL_ASSIGN] [--snv-assign SNV_ASSIGN] [--q_y Q_Y] [--q_z Q_Z]
-                [-j THREADS] [-v]
+  <h1>I/O Formats</h1>
 
-Arborist: a method to rank SNV clonal trees using scDNA-seq data.
-
-options:
-  -h, --help            show this help message and exit
-  -R READ_COUNTS, --read_counts READ_COUNTS
-                        Path to read counts CSV file with columns 'snv', 'cell', 'total', 'alt'
-  -Y SNV_CLUSTERS, --snv-clusters SNV_CLUSTERS
-                        Path to SNV clusters CSV file with unlabeled columns 'snv', 'cluster'. The order of columns matters
-  -T TREES, --trees TREES
-                        Path to file containing all candidate trees to be ranked.
-  --edge-delim EDGE_DELIM
-                        edge delimiter in candidate tree file.
-  --add-normal          flag to add a normal clone if input trees do not already contain them
-  --alpha ALPHA         Per base sequencing error
-  --max-iter MAX_ITER   max number of iterations
-  --prior PRIOR         prior (gamma) on input SNV cluster assignment
-  --pickle PICKLE       path to where all pickled tree fits should be saved.
-  -d DRAW, --draw DRAW  Path to where the tree visualization should be saved
-  -t TREE, --tree TREE  Path to save the top ranked tree as a txt file.
-  --ranking RANKING     Path to where tree ranking output should be saved
-  --cell-assign CELL_ASSIGN
-                        Path to where the MAP cell-to-clone labels should be saved
-  --snv-assign SNV_ASSIGN
-                        Path to where the MAP SNV-to-cluster labels should be saved.
-  --q_y Q_Y             Path to where the approximate SNV posterior should be saved
-  --q_z Q_Z             Path to where the approximate cell posterior should be saved
-  -j THREADS, --threads THREADS
-                        Number of threads to use
-  -v, --verbose         Print verbose output
+<h3 id="input-data">Input Data</h3>
+<p>Example input files can be found in the <a href="example/input">example/input</a> directory.</p>
+<p>Arborist requires three inputs as three separate files:
+1. <a href="#read-counts-file-format">a CSV file containing single-cell variant <strong>A</strong> and total <strong>D</strong> read count data</a>
+2. <a href="#initial-snv-clustering-format">a CSV file containing the initial SNV clustering</a>
+3. <a href="#tree-format">a text file containing the set of candidate clone trees</a></p>
+<h4 id="read-counts-file-format"><strong>Read Counts File Format</strong></h4>
+<p>The input read counts file should be in CSV format contain the following columns with header row in any order:
+| Column | Description |
+|---------|------------|
+| <code>cell</code> | cell identifier, str or int |
+| <code>snv</code> | SNV identifier, str or int |
+| <code>total</code> | Total number of reads for cell and SNV |
+| <code>alt</code> | Number of variant reads for cell and SNV |</p>
+<p><strong>Example</strong></p>
+<pre><code>snv,cell,alt,total
+0,4,0,1
+0,5,0,1
+0,29,0,1
+0,45,0,1
+0,48,0,1
+0,64,0,1
+0,76,0,1
+0,92,0,1
+0,97,0,1
 </code></pre>
-<h2 id="examples">Examples</h2>
-<p>The following is a minimal <code>arborist</code> example with default parameters and no output files to test the installation.</p>
-<pre><code class="language-bash">   arborist -R example/input/read_counts.csv \
-   -T example/input/candidate_trees.txt \
-   -Y example/input/input_clustering.csv 
+<h3 id="initial-snv-clustering-file-format"><strong>Initial SNV Clustering File Format</strong></h3>
+<p>The initial SNV clustering file should be in CSV format and contain no headers. The order of the columns matter with the first column being the SNV identifier followed by the initial SNV cluster label. SNV identifiers should be consistent with the read count file and cluster labels should be consistent with the node labels in the candidate tree. Any SNV assigned to an SNV cluster label that is not present in the tree with be initialized with a uniform prior over all SNV clusters. </p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>snv</code></td>
+<td>SNV identifier, str or int</td>
+</tr>
+<tr>
+<td><code>cluster</code></td>
+<td>SNV cluster label, int</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example</strong></p>
+<pre><code>108,2
+123,2
+176,2
+289,2
+452,2
+597,2
+857,2
+890,2
+909,2
+918,2
 </code></pre>
-<p>If everything installed correctly you should see the following printout:</p>
-<pre><code>-----------Arborist complete!-----------
-
-Tree index 0
-ELBO: -311397.27
- 2-&gt;1
- 2-&gt;3
- 2-&gt;4
- 2-&gt;5
- 3-&gt;6
- 0-&gt;2
+<h4 id="tree-file-format"><strong>Tree File Format</strong></h4>
+<ul>
+<li>The header for each tree, i.e., '# Tree 1'  must contain '#' but the remaining text is unimportant</li>
+<li>Each tree consists of delimited separated parent-child relationships. The <code>arborist</code> default delimiter is " " but different delimiters may be passed via the <code>--edge-delim</code> argument </li>
+<li>If clone trees do not contain a normal clone (this is common), then the argument <code>--add-normal</code> should be used to tell <code>arborist</code> to append a normal clone to the root of each clone tree. Any cells assigned to the root will be normal cells. </li>
+<li>Node identifiers must be integers</li>
+</ul>
+<p><strong>Example:</strong></p>
+<pre><code>    # Tree 1
+    1 2
+    1 3
+    # Tree 2
+    4 5
+    4 6
 </code></pre>
-<p>This example demonstrates how to modify parameters and write relevant output files. </p>
-<pre><code class="language-bash">   arborist -R example/input/read_counts.csv \
-   -T example/input/candidate_trees.txt \
-   -Y example/input/input_clustering.csv \
-   --prior 0.7  \
-   --alpha 0.001 \
-   --ranking example/output/tree_rankings.csv \
-   --draw example/output/best_tree.png \
-   --cell-assign example/output/cell_to_clone_labels.csv \
-   --snv-assign example/output/snv_to_cluster_labels.csv 
-</code></pre>
+<hr />
+<h2 id="output-data">Output Data</h2>
+<p>Some example output files are located in the <a href="example/output">example/output</a> directory.
+Below is table describing the optional output files from <code>arborist</code></p>
+<table>
+<thead>
+<tr>
+<th>argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--pickle</code></td>
+<td>A pickled dictionary with tree index as key and <code>TreeFit</code> objects containing the fit for each clone tree</td>
+</tr>
+<tr>
+<td><code>--draw</code></td>
+<td>A visualization of the <code>arborist</code> top ranked clone tree</td>
+</tr>
+<tr>
+<td><code>--tree</code></td>
+<td>A flat text file similar to the input format containing the <code>arborist</code> top ranked clone tree</td>
+</tr>
+<tr>
+<td><code>--ranking</code></td>
+<td>a CSV file containg the ranking of the clone trees by the ELBO from best to worst. 'tree_idx' is the order listed in the candidate set</td>
+</tr>
+<tr>
+<td><code>--cell-assign</code></td>
+<td>a CSV file containing the MAP assignment of cell (id) to clone (assignment)</td>
+</tr>
+<tr>
+<td><code>--snv-assign</code></td>
+<td>a CSV file containing the MAP assignment of SNV (id) to cluster (assignment)</td>
+</tr>
+<tr>
+<td><code>--q_z</code></td>
+<td>a CSV file containing the approximate posterior distribution over cell-to-clone labels</td>
+</tr>
+<tr>
+<td><code>--q_y</code></td>
+<td>a CSV file containing the approximate posterior distribution over SNV-to-cluster labels</td>
+</tr>
+</tbody>
+</table>
 
 
 
