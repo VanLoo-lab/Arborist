@@ -1,11 +1,15 @@
 site_name: Arborist
+site_url: https://vanloo-lab.github.io/Arborist/
 nav:
   - Home: index.md
   - Installation: installation.md
   - CLI Tool: usage.md 
   - Package Tutorial: package-tutorial.md 
+  - I/O Formats: io.md
 theme:
   name: material
   palette:
     primary: green
     accent: brown
+markdown_extensions:
+  - def_list

@@ -31,12 +31,13 @@ python -c "from arborist import arborist"
 
 
 ## Dependencies
+
 The `arborist` package requires the following dependencies:
-- `python>=3.7`  
+
+- `python>=3.7`
 - `numpy>=1.20`
 - `scipy>=1.7`
-- `pandas>=1.3`,
-- `pygraphviz`,
-- `numba>=0.61`,
+- `pandas>=1.3`
+- `pygraphviz`
+- `numba>=0.61`
 - `networkx>=3.6`
-
