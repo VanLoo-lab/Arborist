@@ -3,8 +3,11 @@ Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing d
 
 
 ## Table of Contents
+- [Change log](#changelog)
 - [Dependencies](#dependencies)
 - [Installation](#installation)
+    - [Install via conda](#installation-via-conda-recommended)
+    - [Manual installation](#manual-installation)
 - [I/O Data Formats](#io-data-formats)
     - [Input Data](#input-data)
         - [Read counts format](#read-counts-file-format)
@@ -14,37 +17,40 @@ Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing d
 - [Usage](#usage)
     - [Arborist CLI tool](#arborist-cli-tool)
     - [Arborist Python Package](#arborist-package)
-    <!-- - [`arborist` package](#arborist-package) -->
 - [Example](#example)
-<!-- 
-
-## Features
-- Ranks candidate SNV phylogenies via estimation of a lower bound on the posterior probability
-- Assigns cells to their most probable clones and computes the approximate posterior probability of assignment to each clone in the tree.
-- Assigns SNVs to their most probable SNV clusters and computes the approximate posterior probability of assignment to each SNV cluster in the tree.
-- Functions to compute the cell mutational burden (cmb) on the output of `arborist` for additional valdiation. -->
 
 
 
+## Changelog
 
+See the [CHANGELOG](CHANGELOG.md) for a summary of changes between Arborist versions.
 
 ---
 
 ## Dependencies
 The `arborist` package requires the following dependencies:
-- `python>=3.7`
-- `numba`
-- `pandas`
-- `numpy`
-- `scipy`
-- `pygrahviz`
-- `networkx`
+- `python>=3.7`  
+- `numpy>=1.20`
+- `scipy>=1.7`
+- `pandas>=1.3`,
+- `pygraphviz`,
+- `numba>=0.61`,
+- `networkx>=3.6`
 
 
 
 ## Installation
 
-Clone the respository and install the package using `pip`. *Note: dependencies will be installed automatically*
+### Installation via conda (recommended)
+
+`arborist` is available on Bioconda. You can easy install it via `conda/mamba` with:
+
+```bash
+conda install -c bioconda -c conda-forge arborist
+```
+
+### Manual installation
+Clone the repository and install the package using `pip`. *Note: dependencies will be installed automatically*
 
 
 ```bash
@@ -65,10 +71,10 @@ python -c "from arborist import arborist"
 ### Input Data
 Example input files can be found in the [example/input](example/input) directory.
 
-Arborist requires three inputs as three seperate files:
-1. [a CSV file containing single-cell variant $A$ and total $D$ read count data](#read-counts-file-format)
+Arborist requires three inputs as three separate files:
+1. [a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
 2. [a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
-3. [a text file contained the set of candidate clone trees](#tree-format)
+3. [a text file containing the set of candidate clone trees](#tree-format)
 
 
 #### **Read Counts File Format**
@@ -120,7 +126,7 @@ The initial SNV clustering file should be in CSV format and contain no headers. 
 
 #### **Tree File Format**
 - The header for each tree, i.e., '# Tree 1'  must contain '#' but the remaining text is unimportant
-- Each tree consists of delimited seperated parent-child relationships. The `arborist` default delimiter is " " but different delimiters maye be passed via the `--edge-delim` argument 
+- Each tree consists of delimited separated parent-child relationships. The `arborist` default delimiter is " " but different delimiters may be passed via the `--edge-delim` argument 
 - If clone trees do not contain a normal clone (this is common), then the argument `--add-normal` should be used to tell `arborist` to append a normal clone to the root of each clone tree. Any cells assigned to the root will be normal cells. 
 - Node identifiers must be integers
 
@@ -315,94 +321,3 @@ qy.head()
 
 
 ```
-<!-- ### CMB CLI tool usage
-```
-cmb -h                                                                                        
-usage: cmb [-h] -R READ_COUNTS -T TREES [--cell-assign CELL_ASSIGN] [--sapling] [--min-cells MIN_CELLS] [-o OUT] [--conipher]
-
-options:
-  -h, --help            show this help message and exit
-  -R READ_COUNTS, --read_counts READ_COUNTS
-                        Path to read counts CSV file with columns 'cell','snv', 'cluster', 'total', 'alt'
-  -T TREES, --trees TREES
-                        Path to tree file
-  --cell-assign CELL_ASSIGN
-                        Path to where cell assignments, with columns 'cell', 'snv', 'tree', 'clone'
-  --sapling             Use sapling format for tree edges, otherwise conipher format is assumed.
-  --min-cells MIN_CELLS
-                        minimum number of cells to compute the scores for a clade
-  -o OUT, --out OUT     filename where cmb values will be saved
-  --conipher            if the tree is in conipher format
-
-```
-
-#### Example
-```bash
-   cmb -R {read_count_fname} -T {trees_fname} \
-   --cell-assign {output_cell_assignment_fname} \
-   --min-cells 20 -o {output_cmb_fname}
-```
-
-### `arborist` Package
-
-Run `arborist` on a set of candidate trees and read counts. The below example generates simulated data using the `sim-it` simulator 
-and then uses `arborist` to rank the trees. 
-
-```python
-import simit.simulator as sim
-from arborist.arborist import rank_trees
-
-
-gt, simdata = sim.simulate(
-    seed=34,
-    num_cells=1000,
-    num_snvs=5000,
-    coverage=0.02,
-    nclusters=10,
-    candidate_trees=None,
-    candidate_set_size=10,
-    cluster_error_prob=0.25,
-    min_proportion=0.05
-)
-
-
-rankings, best_fit, all_tree_fits = rank_trees(
-    simdata.candidate_set,
-    simdata.read_counts,
-    alpha=0.001,
-    max_iter=10,
-    tolerance=1,
-    verbose=True,
-    prior=0.7,
-)
-
-print(rankings.head())
-
-
-```
-
-
-
-
-Perform validation on the trees using the cell mutational burden `cmb` metric.
-```python
-from arborist.cmb import cmb
-
-#read a mapping of cluster to a list of SNVs from the read_counts
-psi = dat[["snv", "cluster"]].drop_duplicates()
-psi = dict(zip(psi["snv"], psi["cluster"]))
-clade_snvs = defaultdict(list)
-for j, cluster in psi.items():
-   clade_snvs[cluster].append(j)
-
-#minumum number of cells within/outside of clade needed to compute the metric.
-min_cells = 20
-
-#compute the cmb of each tree, clade and cell in the arborist output dataframe cell_assign
-cmb_df = cmb(cell_assign,trees,clade_snvs, read_counts, min_cells)
-
-print(cmb_df.head())
-```
-
-
- -->
