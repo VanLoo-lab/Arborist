@@ -4,6 +4,7 @@ Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing d
 
 ## Table of Contents
 - [Change log](#changelog)
+- [Documentation](#documentation)
 - [Dependencies](#dependencies)
 - [Installation](#installation)
     - [Install via conda](#installation-via-conda-recommended)
@@ -20,6 +21,8 @@ Arborist is a method to rank SNV clone trees inferred from bulk DNA sequencing d
 - [Example](#example)
 
 
+## Documentation
+To view the documentation and API for `arborist`, visit [https://VanLoo-lab.github.io/Arborist/](https://VanLoo-lab.github.io/Arborist/)
 
 ## Changelog
 
