@@ -94,7 +94,7 @@
 
   
 
-<header class="md-header md-header--shadow" data-md-component="header">
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="../.." title="Arborist" class="md-header__button md-logo" aria-label="Arborist" data-md-component="logo">
       
@@ -189,13 +189,13 @@
     
   </nav>
   
+    
+  
 </header>
     
     <div class="md-container" data-md-component="container">
       
       
-        
-          
         
       
       <main class="md-main" data-md-component="main">
@@ -1171,7 +1171,41 @@
 <span class="normal">248</span>
 <span class="normal">249</span>
 <span class="normal">250</span>
-<span class="normal">251</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">TreeFit</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Solution class to hold the solution for each tree fit by Arborist</span>
@@ -1234,7 +1268,13 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">q_z_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Converts q_z numpy array to panda.DataFrame</span>
+<span class="sd">        Converts q_z numpy array to pandas.DataFrame</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pandas.DataFrame</span>
+<span class="sd">            A dataframe containing the inferred cell-to-clone label posterior distribution. </span>
+
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_q_to_dataframe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_clone</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;clone&quot;</span><span class="p">)</span>
 
@@ -1242,7 +1282,13 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">q_y_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Converts q_z numpy array to panda.DataFrame</span>
+<span class="sd">        Converts q_z numpy array to pandas.DataFrame</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pandas.DataFrame</span>
+<span class="sd">            A dataframe containing the inferred SNV-to-cluster label posterior distribution. </span>
+
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_q_to_dataframe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_y</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">snv_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_cluster</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;cluster&quot;</span><span class="p">)</span>
 
@@ -1269,19 +1315,19 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">map_assign_z</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        assigns cell to the maximum a posteriori (MAP) clone</span>
+<span class="sd">        Assigns cell to the maximum a posteriori (MAP) clone</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        pandas.DataFrame</span>
-<span class="sd">            A dataframe with columns [&#39;id&#39;, &#39;assignment&#39;] providing the cell-to-clone MAP assignment</span>
+<span class="sd">            A dataframe with columns [&#39;id&#39;, &#39;assignment&#39;] providing the cell-to-clone MAP assignment.</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_map_assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_clone</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">map_assign_y</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        assigns SNVs to the maximum a posteriori (MAP) cluster</span>
+<span class="sd">        Assigns SNVs to the maximum a posteriori (MAP) cluster</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1306,16 +1352,24 @@
             <span class="k">for</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tree</span><span class="p">:</span>
                 <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">u</span><span class="si">}{</span><span class="n">sep</span><span class="si">}{</span><span class="n">v</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">visualize_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">output_file</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">visualize_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">output_file</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Visualizes a tree using Graphviz.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
-<span class="sd">        output_file : str, optional</span>
-<span class="sd">            The path to save the visualization. If not provided, the visualization</span>
-<span class="sd">            will be displayed on the screen.        </span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        output_file : str</span>
+<span class="sd">            The path to save the visualization. </span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If a &#39;.dot&#39; extension is passed, the file will be saved as a dot file. Otherwise,</span>
+<span class="sd">        the format will be autodetected by extension, i.e., png or pdf. </span>
+
+
+<span class="sd">        &quot;&quot;&quot;</span>     
+
         <span class="n">labels</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
 
 
@@ -1336,8 +1390,8 @@
         <span class="k">if</span> <span class="n">output_file</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.dot&quot;</span><span class="p">):</span>
             <span class="n">graph</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span>  <span class="c1"># Save as a DOT file</span>
 
-        <span class="k">elif</span> <span class="n">output_file</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.png&quot;</span><span class="p">):</span>
-            <span class="n">graph</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">prog</span><span class="o">=</span><span class="s2">&quot;dot&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>  <span class="c1"># Save as a PNG</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">graph</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">prog</span><span class="o">=</span><span class="s2">&quot;dot&quot;</span><span class="p">)</span>  <span class="c1"># Save as a PNG</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_save_genotypes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1373,7 +1427,15 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">cell_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Computes the entropy of each cell assignment from the approximate variational posterior q_z</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pandas.DataFrame</span>
+<span class="sd">            A dataframe with columns [&#39;id&#39;, &#39;entropy&#39;] containing the </span>
+<span class="sd">            entropy of the inferred posterior distribution for each cell.</span>
+
 <span class="sd">        &quot;&quot;&quot;</span>
+
         <span class="n">row_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span>
         <span class="n">h_z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_hz</span><span class="p">(</span><span class="n">eps</span><span class="p">)</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">h_z</span><span class="p">)</span>
@@ -1388,6 +1450,12 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">snv_cluster_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Computes the entropy of each SNV assignment from the approximate variational posterior q_y</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pandas.DataFrame</span>
+<span class="sd">            A dataframe with columns [&#39;id&#39;, &#39;entropy&#39;] containing the </span>
+<span class="sd">            entropy of the inferred posterior distribution for each SNV.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">row_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">snv_to_idx</span>
         <span class="n">h_y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_hy</span><span class="p">(</span><span class="n">eps</span><span class="p">)</span>
@@ -1444,25 +1512,65 @@
         <p>Computes the entropy of each cell assignment from the approximate variational posterior q_z</p>
 
 
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dataframe with columns ['id', 'entropy'] containing the 
+entropy of the inferred posterior distribution for each cell.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">208</span>
-<span class="normal">209</span>
-<span class="normal">210</span>
-<span class="normal">211</span>
-<span class="normal">212</span>
-<span class="normal">213</span>
-<span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cell_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">cell_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Computes the entropy of each cell assignment from the approximate variational posterior q_z</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pandas.DataFrame</span>
+<span class="sd">        A dataframe with columns [&#39;id&#39;, &#39;entropy&#39;] containing the </span>
+<span class="sd">        entropy of the inferred posterior distribution for each cell.</span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="n">row_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span>
     <span class="n">h_z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_hz</span><span class="p">(</span><span class="n">eps</span><span class="p">)</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">h_z</span><span class="p">)</span>
@@ -1490,7 +1598,7 @@
 
     <div class="doc doc-contents ">
 
-        <p>assigns SNVs to the maximum a posteriori (MAP) cluster</p>
+        <p>Assigns SNVs to the maximum a posteriori (MAP) cluster</p>
 
 
     <p><span class="doc-section-title">Returns:</span></p>
@@ -1518,18 +1626,18 @@
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">map_assign_y</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">map_assign_y</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    assigns SNVs to the maximum a posteriori (MAP) cluster</span>
+<span class="sd">    Assigns SNVs to the maximum a posteriori (MAP) cluster</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1554,7 +1662,7 @@
 
     <div class="doc doc-contents ">
 
-        <p>assigns cell to the maximum a posteriori (MAP) clone</p>
+        <p>Assigns cell to the maximum a posteriori (MAP) clone</p>
 
 
     <p><span class="doc-section-title">Returns:</span></p>
@@ -1572,7 +1680,7 @@
             </td>
             <td>
               <div class="doc-md-description">
-                <p>A dataframe with columns ['id', 'assignment'] providing the cell-to-clone MAP assignment</p>
+                <p>A dataframe with columns ['id', 'assignment'] providing the cell-to-clone MAP assignment.</p>
               </div>
             </td>
           </tr>
@@ -1582,24 +1690,24 @@
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
-<span class="normal">109</span>
-<span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">map_assign_z</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">map_assign_z</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    assigns cell to the maximum a posteriori (MAP) clone</span>
+<span class="sd">    Assigns cell to the maximum a posteriori (MAP) clone</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    pandas.DataFrame</span>
-<span class="sd">        A dataframe with columns [&#39;id&#39;, &#39;assignment&#39;] providing the cell-to-clone MAP assignment</span>
+<span class="sd">        A dataframe with columns [&#39;id&#39;, &#39;assignment&#39;] providing the cell-to-clone MAP assignment.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_map_assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_clone</span><span class="p">)</span>
@@ -1620,20 +1728,55 @@
 
     <div class="doc doc-contents ">
 
-        <p>Converts q_z numpy array to panda.DataFrame</p>
+        <p>Converts q_z numpy array to pandas.DataFrame</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dataframe containing the inferred SNV-to-cluster label posterior distribution.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">78</span>
-<span class="normal">79</span>
-<span class="normal">80</span>
-<span class="normal">81</span>
-<span class="normal">82</span>
-<span class="normal">83</span>
-<span class="normal">84</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">q_y_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span>
+<span class="normal">93</span>
+<span class="normal">94</span>
+<span class="normal">95</span>
+<span class="normal">96</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">q_y_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Converts q_z numpy array to panda.DataFrame</span>
+<span class="sd">    Converts q_z numpy array to pandas.DataFrame</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pandas.DataFrame</span>
+<span class="sd">        A dataframe containing the inferred SNV-to-cluster label posterior distribution. </span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_q_to_dataframe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_y</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">snv_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_cluster</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;cluster&quot;</span><span class="p">)</span>
 
@@ -1655,7 +1798,30 @@
 
     <div class="doc doc-contents ">
 
-        <p>Converts q_z numpy array to panda.DataFrame</p>
+        <p>Converts q_z numpy array to pandas.DataFrame</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dataframe containing the inferred cell-to-clone label posterior distribution.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
             <details class="mkdocstrings-source">
@@ -1666,9 +1832,21 @@
 <span class="normal">73</span>
 <span class="normal">74</span>
 <span class="normal">75</span>
-<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">q_z_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">q_z_df</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Converts q_z numpy array to panda.DataFrame</span>
+<span class="sd">    Converts q_z numpy array to pandas.DataFrame</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pandas.DataFrame</span>
+<span class="sd">        A dataframe containing the inferred cell-to-clone label posterior distribution. </span>
+
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_q_to_dataframe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">q_z</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cell_to_idx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">idx_to_clone</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;clone&quot;</span><span class="p">)</span>
 
@@ -1742,21 +1920,21 @@
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">128</span>
-<span class="normal">129</span>
-<span class="normal">130</span>
-<span class="normal">131</span>
-<span class="normal">132</span>
-<span class="normal">133</span>
-<span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">140</span>
 <span class="normal">141</span>
-<span class="normal">142</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">save_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot; &quot;</span><span class="p">):</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">save_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot; &quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Write the tree as a flat file in the same format as in the input style.</span>
 
@@ -1791,25 +1969,61 @@
         <p>Computes the entropy of each SNV assignment from the approximate variational posterior q_y</p>
 
 
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pandas.DataFrame">DataFrame</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A dataframe with columns ['id', 'entropy'] containing the 
+entropy of the inferred posterior distribution for each SNV.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">snv_cluster_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">snv_cluster_entropy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Computes the entropy of each SNV assignment from the approximate variational posterior q_y</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pandas.DataFrame</span>
+<span class="sd">        A dataframe with columns [&#39;id&#39;, &#39;entropy&#39;] containing the </span>
+<span class="sd">        entropy of the inferred posterior distribution for each SNV.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">row_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">snv_to_idx</span>
     <span class="n">h_y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_hy</span><span class="p">(</span><span class="n">eps</span><span class="p">)</span>
@@ -1832,7 +2046,7 @@
 
 
 <h2 id="arborist.treefit.TreeFit.visualize_tree" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">visualize_tree</span><span class="p">(</span><span class="n">output_file</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">visualize_tree</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1862,33 +2076,26 @@
             </td>
             <td>
               <div class="doc-md-description">
-                <p>The path to save the visualization. If not provided, the visualization
-will be displayed on the screen.</p>
+                <p>The path to save the visualization.</p>
               </div>
             </td>
             <td>
-                  <code>None</code>
+                <em>required</em>
             </td>
           </tr>
       </tbody>
     </table>
 
 
+<details class="note" open>
+  <summary>Notes</summary>
+  <p>If a '.dot' extension is passed, the file will be saved as a dot file. Otherwise,
+the format will be autodetected by extension, i.e., png or pdf.</p>
+</details>
+
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/arborist/treefit.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span>
-<span class="normal">150</span>
-<span class="normal">151</span>
-<span class="normal">152</span>
-<span class="normal">153</span>
-<span class="normal">154</span>
-<span class="normal">155</span>
-<span class="normal">156</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">156</span>
 <span class="normal">157</span>
 <span class="normal">158</span>
 <span class="normal">159</span>
@@ -1907,16 +2114,44 @@ will be displayed on the screen.</p>
 <span class="normal">172</span>
 <span class="normal">173</span>
 <span class="normal">174</span>
-<span class="normal">175</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">visualize_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">output_file</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">visualize_tree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">output_file</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Visualizes a tree using Graphviz.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    output_file : str, optional</span>
-<span class="sd">        The path to save the visualization. If not provided, the visualization</span>
-<span class="sd">        will be displayed on the screen.        </span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    output_file : str</span>
+<span class="sd">        The path to save the visualization. </span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    If a &#39;.dot&#39; extension is passed, the file will be saved as a dot file. Otherwise,</span>
+<span class="sd">    the format will be autodetected by extension, i.e., png or pdf. </span>
+
+
+<span class="sd">    &quot;&quot;&quot;</span>     
+
     <span class="n">labels</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
 
 
@@ -1937,8 +2172,8 @@ will be displayed on the screen.</p>
     <span class="k">if</span> <span class="n">output_file</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.dot&quot;</span><span class="p">):</span>
         <span class="n">graph</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span>  <span class="c1"># Save as a DOT file</span>
 
-    <span class="k">elif</span> <span class="n">output_file</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.png&quot;</span><span class="p">):</span>
-        <span class="n">graph</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">prog</span><span class="o">=</span><span class="s2">&quot;dot&quot;</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;png&quot;</span><span class="p">)</span>  <span class="c1"># Save as a PNG</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">draw</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">prog</span><span class="o">=</span><span class="s2">&quot;dot&quot;</span><span class="p">)</span>  <span class="c1"># Save as a PNG</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1994,6 +2229,22 @@ will be displayed on the screen.</p>
   
 </div>
       
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/VanLoo-lab/" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
     </div>
   </div>
 </footer>
@@ -2007,7 +2258,7 @@ will be displayed on the screen.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.tooltips", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs.sticky", "content.tooltips", "navigation.top", "navigation.tracking", "search.highlight", "search.share", "search.suggest"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.e71a0d61.min.js"></script>
