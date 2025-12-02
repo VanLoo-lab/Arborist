@@ -9,13 +9,35 @@ from collections import defaultdict
 @dataclass
 class TreeFit:
     """
-    Solution class to hold the solution to a tree
+    Solution class to hold the solution for each tree fit by Arborist
+
+    Attributes
+    -----------
+    tree : list of tuples of int
+        Edge list of tree including normal clone.
+    tree_idx : int 
+        Index identifier of tree in the original input
+    elbo : float
+        The evidence lower bound (ELBO) computed for the tree.
+    q_z : numpy.ndarray
+        The inferred approximation to the posterior cell-to-clone label.
+    q_y : numpy.ndarray
+        The inferred approximation to the posterior SNV-to-cluster label.
+    cell_to_idx. : dict[str,int]
+        The internal mapping of cell label to index.
+    snv_to_idx : dict[str,int]
+        The internal mapping of SNV label to index.
+    clone_to_idx : dict[str,int]
+        The internal mapping of clone label to index.
+    cluster_to_idx : dict[str,int]
+        The internal mapping of SNV cluster label to index.
+
     """
 
-    tree: list   #edge list of tree including normal clone
-    tree_idx: int #index identifier of tree
-    elbo: float #the Evidence Lower Bound (ELBO) computed for the tree
-    q_z: np.ndarray #the inferred approximation to the posterior cell-to-clone label
+    tree: list   
+    tree_idx: int 
+    elbo: float 
+    q_z: np.ndarray 
     q_y: np.ndarray #the inferred approximation to the posterior SNV-to-cluster label
     cell_to_idx: dict #internal cell label to index 
     snv_to_idx: dict #intenal SNV label to index
@@ -32,7 +54,7 @@ class TreeFit:
             mystr += f" {u}->{v}\n"
         return mystr
 
-    def convert_q_to_dataframe(self, q, row_dict, col_dict, prefix="clone"):
+    def _convert_q_to_dataframe(self, q, row_dict, col_dict, prefix="clone"):
         """
         converts q to a dataframe
         """
@@ -47,17 +69,29 @@ class TreeFit:
 
     def q_z_df(self):
         """
-        Converts q_z numpy array to panda.DataFrame
+        Converts q_z numpy array to pandas.DataFrame
+
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe containing the inferred cell-to-clone label posterior distribution. 
+
         """
-        df = self.convert_q_to_dataframe(self.q_z, self.cell_to_idx, self.idx_to_clone, prefix="clone")
+        df = self._convert_q_to_dataframe(self.q_z, self.cell_to_idx, self.idx_to_clone, prefix="clone")
 
         return df
 
     def q_y_df(self):
         """
-        Converts q_z numpy array to panda.DataFrame
+        Converts q_z numpy array to pandas.DataFrame
+        
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe containing the inferred SNV-to-cluster label posterior distribution. 
+
         """
-        df = self.convert_q_to_dataframe(self.q_y, self.snv_to_idx, self.idx_to_cluster, prefix="cluster")
+        df = self._convert_q_to_dataframe(self.q_y, self.snv_to_idx, self.idx_to_cluster, prefix="cluster")
 
         return df
 
@@ -65,7 +99,7 @@ class TreeFit:
         return f"TreeFit(tree={self.tree}, tree_idx={self.tree_idx}, expected_log_likelihood={self.elbo})"
 
     @staticmethod
-    def map_assign(q, mydict, assign_dict):
+    def _map_assign(q, mydict, assign_dict):
         """
         assigns cell to the maximum a posteriori (MAP) clone/cluster
         """
@@ -82,40 +116,61 @@ class TreeFit:
 
     def map_assign_z(self):
         """
-        assigns cell to the maximum a posteriori (MAP) clone
+        Assigns cell to the maximum a posteriori (MAP) clone
+
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe with columns ['id', 'assignment'] providing the cell-to-clone MAP assignment.
+
         """
-        return self.map_assign(self.q_z, self.cell_to_idx, self.idx_to_clone)
+        return self._map_assign(self.q_z, self.cell_to_idx, self.idx_to_clone)
 
     def map_assign_y(self):
         """
-        assigns SNVs to the maximum a posteriori (MAP) cluster
+        Assigns SNVs to the maximum a posteriori (MAP) cluster
+
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe with columns ['id', 'assignment'] providing the SNV-to-cluster MAP assignment
         """
-        return self.map_assign(self.q_y, self.snv_to_idx, self.idx_to_cluster)
+        return self._map_assign(self.q_y, self.snv_to_idx, self.idx_to_cluster)
 
     def save_tree(self, fname, sep=" "):
         """
-        Write the tree as a flat file in the same format as in the input style
+        Write the tree as a flat file in the same format as in the input style.
+
+        Parameters
+        ----------
+        fname : str
+            The name of the output file to write the tree.
+        sep : str
+            The delimiter to use to separate parent and child (default is " ").
         """
         with open(fname, "w+") as file:
             file.write(f"{len(self.tree)} #edges tree 0\n")
             for u, v in self.tree:
                 file.write(f"{u}{sep}{v}\n")
 
-    def visualize_tree(self,  output_file=None):
+    def visualize_tree(self,  output_file):
         """
         Visualizes a tree using Graphviz.
 
         Parameters
         ----------
-        tree : list of tuple of int
-            The tree to visualize, represented as a list of tuples where each tuple
-            contains two integers representing a parent
-            and
-            child relationship.
-        output_file : str, optional
-            The path to save the visualization. If not provided, the visualization
-            will be displayed on the screen.        
-        """
+        output_file : str
+            The path to save the visualization. 
+
+
+        Notes
+        -----
+        If a '.dot' extension is passed, the file will be saved as a dot file. Otherwise,
+        the format will be autodetected by extension, i.e., png or pdf. 
+
+
+        """     
+   
         labels = defaultdict(str)
 
 
@@ -136,10 +191,10 @@ class TreeFit:
         if output_file.endswith(".dot"):
             graph.write(output_file)  # Save as a DOT file
 
-        elif output_file.endswith(".png"):
-            graph.draw(output_file, prog="dot", format="png")  # Save as a PNG
+        else:
+            graph.draw(output_file, prog="dot")  # Save as a PNG
 
-    def save_genotypes(self, fname, x=1, y=1):
+    def _save_genotypes(self, fname, x=1, y=1):
         """
         Write the genotypes of each clone to a file. Default copy numbers (x,y) are (1,1)
         """
@@ -173,9 +228,17 @@ class TreeFit:
     def cell_entropy(self, eps=1e-12):
         """
         Computes the entropy of each cell assignment from the approximate variational posterior q_z
+        
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe with columns ['id', 'entropy'] containing the 
+            entropy of the inferred posterior distribution for each cell.
+
         """
+
         row_dict = self.cell_to_idx
-        h_z = self.compute_hz(eps)
+        h_z = self._compute_hz(eps)
         df = pd.DataFrame(h_z)
         df.columns = ["entropy"]
         df.index.name = "id"
@@ -188,9 +251,15 @@ class TreeFit:
     def snv_cluster_entropy(self, eps=1e-12):
         """
         Computes the entropy of each SNV assignment from the approximate variational posterior q_y
+        
+        Returns
+        -------
+        pandas.DataFrame
+            A dataframe with columns ['id', 'entropy'] containing the 
+            entropy of the inferred posterior distribution for each SNV.
         """
         row_dict = self.snv_to_idx
-        h_y = self.compute_hy(eps)
+        h_y = self._compute_hy(eps)
         assert h_y.shape[0] == len(row_dict)
         df = pd.DataFrame(h_y)
         df.columns = ["entropy"]
@@ -201,14 +270,14 @@ class TreeFit:
 
         return df
 
-    def compute_hz(self, eps=1e-12):
+    def _compute_hz(self, eps=1e-12):
         """
         Helper function to compute cell entropy
         """
         h_z = -np.sum(self.q_z * np.log(self.q_z + eps), axis=1) / self.q_z.shape[1]
         return h_z
 
-    def compute_hy(self, eps=1e-12):
+    def _compute_hy(self, eps=1e-12):
         """
         Helper function to compute SNV entropy
         """

@@ -1,15 +1,64 @@
 site_name: Arborist
 site_url: https://vanloo-lab.github.io/Arborist/
+site_author: Leah L. Weber
+site_description:  >-
+  Documentation for the arborist package
+repo_name: VanLoo-lab/Arborist
+repo_url: https://github.com/VanLoo-lab/Arborist
 nav:
   - Home: index.md
   - Installation: installation.md
   - CLI Tool: usage.md 
   - Package Tutorial: package-tutorial.md 
   - I/O Formats: io.md
+  - API:
+    - arborist: api/arborist.md
+    - read_trees: api/read_trees.md
+    - TreeFit: api/treefit.md
 theme:
   name: material
   palette:
-    primary: green
-    accent: brown
+    primary: brown
+    accent: green
+  features:
+    - navigation.tabs.sticky # keep tabs visible when scrolling (optional)
+    - content.tooltips
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+  font:
+    text: Roboto
+    code: Roboto Mono
+  logo: img/icon.svg
+  favicon: img/icon.svg
+extra_css:
+    - styles/extra.css
 markdown_extensions:
   - def_list
+  - abbr
+  - admonition
+  - attr_list
+  - footnotes
+  - md_in_html
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: VanLoo-lab
+      repo: Arborist
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            filters:
+              - "!^_"
+extra:
+  social:
+      - icon: fontawesome/brands/github
+        link: https://github.com/VanLoo-lab/

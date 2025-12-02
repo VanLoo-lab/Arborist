@@ -916,50 +916,85 @@ def arborist(
     verbose: bool = False,
 ) -> tuple:
     """
-    Rank SNV phylogenetic trees based on evidence lower bound (ELBO) given scDNA-seq read count data,
-    and an initial SNV clustering.
-    This function processes a list of clonal trees and their associated read counts and usese variational inference to
-    compute the evidence lower bound.
+    Rank candidate SNV phylogenetic trees using scDNA-seq read counts.
+
+    This function evaluates a list of clonal trees using a variational inference
+    scheme and returns an evidence lower bound (ELBO)-based score for each tree.
+    An initial SNV-to-cluster prior is set given an initial SNV clustering, and both cell-to-clone and
+    SNV-to-cluster assignments are optimized under the model.
 
     Parameters
     ----------
-    tree_list : list
-        A list of phylogenetic trees to be ranked.
+    tree_list : list of list of tuple
+        Candidate phylogenetic trees to be ranked. Each tree is represented as
+        a list of directed edges ``(parent, child)``. All trees must contain
+        the same set of clone identifiers.
     read_counts : pandas.DataFrame
-        A DataFrame containing named columns ["snv", "cell", "alt", "total"] in any order
-    snv_cluster: pandas.DataFrame
-        A DataFrame containing named columns ["snv", "cluster"] in any order
-    alpha : float, optional (d)
-        The per-base sequencing error rate for computing the likelihood of the tree given the read counts (default is 0.001).
+        Data frame with columns ``["snv", "cell", "alt", "total"]`` in any order, 
+        containing per-cell read counts for each SNV.
+    snv_clusters : pandas.DataFrame
+        Data frame with columns ``["snv", "cluster"]`` in any order, giving an
+        initial hard assignment of SNVs to clusters.
+    alpha : float, optional
+        Per-base sequencing error rate used to compute log-likelihoods for
+        presence/absence of an SNV (default is ``0.001``).
     max_iter : int, optional
-        The max number of iterations for coordinate ascent variational inference (default is 10).
+        Maximum number of coordinate-ascent iterations in the variational
+        inference procedure (default is ``10``).
     tolerance : float, optional
-        The delta to use for convergence of the ELBO between consecutive interations (default is 1)
+        Convergence threshold on the change in ELBO between iterations
+        (default is ``1.0``).
     gamma : float, optional
-        The probability mass to put on the initial SNV cluster assignment (default is 0.7)
-    add_normal : boolean, optional
-        A boolean indicating is a normal clone should be appended to each tree in the candate set (default is False)
-    verbose : boolean, optional
-        A boolean indicated if more extensive logging is desired (default is false)
+        Prior probability mass placed on the initial SNV cluster assignment
+        in ``q_y`` (default is ``0.7``). The remaining mass is spread
+        uniformly over alternative clusters.
+    add_normal : bool, optional
+        If ``True``, prepend a normal clone as a new root node to each tree in
+        ``tree_list`` (default is ``False``).
+    threads : int, optional
+        Number of threads to use for numba-parallelized computations
+        (default is ``10``).
+    verbose : bool, optional
+        If ``True``, enable informative logging messages during fitting
+        (default is ``False``).
 
     Returns
     -------
-    ranked_trees : pandas.DataFrame
-        A DataFrame containing the the ranking of all candidate trees by their ELBO
+    likelihoods : dict[int, float]
+        Mapping from tree index to its ELBO (expected log joint) under the
+        variational posterior.
     best_fit : TreeFit
-        A TreeFit object containing the fit, qz and qy for the top ranked clone tree
-    all_fits : Dictionary of TreeFit objects
-        A dictionary with tree index as key and TreeFit object as value containing the fit for each clone tree
+        ``TreeFit`` object for the top-ranked tree, containing the tree,
+        ELBO, posterior cell-to-clone distribution ``q_z``, posterior
+        SNV-to-cluster distribution ``q_y``, and associated index mappings.
+    all_tree_fits : dict[int, TreeFit]
+        Dictionary mapping each tree index to its corresponding ``TreeFit``
+        object.
+
+    Raises
+    ------
+    ValueError
+        If the candidate trees in ``tree_list`` do not all share the same
+        set of clone identifiers.
 
     Notes
-    -------
-    Only SNVs that have at least one variant read count across all cells with be included in the inference
+    -----
+    Only SNVs with at least one variant read across all cells are retained
+    for inference. SNVs with zero total variant counts are dropped from
+    ``read_counts`` before fitting.
 
     Examples
     --------
-    >>> ranking_df, best_fit, all_fits = rank_trees(tree_list, read_counts, snv_clusters, alpha=0.001)
-
+    >>> likelihoods, best_fit, all_fits = arborist(
+    ...     tree_list,
+    ...     read_counts,
+    ...     snv_clusters,
+    ...     alpha=0.001,
+    ...     max_iter=25,
+    ...     gamma=0.7,
+    ... )
     """
+
 
     if verbose:
         logger = logging.getLogger()

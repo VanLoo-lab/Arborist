@@ -82,8 +82,10 @@ def read_trees(file_path, sep=" "):
     ----------
     file_path : str
         The path to the file containing tree edge data. The file should have
-        space-separated integers on each line representing parent-child
+        edge delimited integers on each line representing parent-child
         relationships.
+    sep : str, optional
+        The delimiter between parent and child in the input file (default is ``" "``).
 
     Returns
     -------
@@ -100,20 +102,20 @@ def read_trees(file_path, sep=" "):
 
     Examples
     --------
-    Given a file with the following content:
+    Given a file `path/to/file` with the following content:
 
     ```
     # Tree 1
     1 2
     1 3
     # Tree 2
-    4 5
-    4 6
+    1 2
+    2 3
     ```
 
 
 
-    >>> read_tree_edges_conipher("path/to/file")
+    >>> read_trees("path/to/file")
     [[(1, 2), (1, 3)], [(4, 5), (4, 6)]]
     """
     trees = []
