@@ -6,11 +6,12 @@ site_description:  >-
 repo_name: VanLoo-lab/Arborist
 repo_url: https://github.com/VanLoo-lab/Arborist
 nav:
-  - Home: index.md
+  - Overview: index.md
   - Installation: installation.md
-  - CLI Tool: usage.md 
-  - Package Tutorial: package-tutorial.md 
   - I/O Formats: io.md
+  - Usage:
+    - CLI Tool: usage.md 
+    - Python Package: package-tutorial.md 
   - API:
     - arborist: api/arborist.md
     - read_trees: api/read_trees.md
