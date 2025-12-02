@@ -1,14 +1,16 @@
-### Input Data
+## Input Data
 Example input files can be found in the [example/input](example/input) directory.
 
 Arborist requires three inputs as three separate files:  
+
 1.[a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
 2.[a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
 3.[a text file containing the set of candidate clone trees](#tree-format)
 
 
-#### **Read Counts File Format**
+### Read Counts File Format
 The input read counts file should be in CSV format contain the following columns with header row in any order:
+
 | Column | Description |
 |---------|------------|
 | `cell` | cell identifier, str or int |
@@ -31,7 +33,7 @@ snv,cell,alt,total
 0,97,0,1
 ```
 
-### **Initial SNV Clustering File Format**
+### Initial SNV Clustering File Format
 The initial SNV clustering file should be in CSV format and contain no headers. The order of the columns matter with the first column being the SNV identifier followed by the initial SNV cluster label. SNV identifiers should be consistent with the read count file and cluster labels should be consistent with the node labels in the candidate tree. Any SNV assigned to an SNV cluster label that is not present in the tree with be initialized with a uniform prior over all SNV clusters. 
 
 | Column | Description |
@@ -54,11 +56,11 @@ The initial SNV clustering file should be in CSV format and contain no headers. 
 ```
 
 
-#### **Tree File Format**
-- The header for each tree, i.e., '# Tree 1'  must contain '#' but the remaining text is unimportant
-- Each tree consists of delimited separated parent-child relationships. The `arborist` default delimiter is " " but different delimiters may be passed via the `--edge-delim` argument 
-- If clone trees do not contain a normal clone (this is common), then the argument `--add-normal` should be used to tell `arborist` to append a normal clone to the root of each clone tree. Any cells assigned to the root will be normal cells. 
-- Node identifiers must be integers
+### Tree File Format
+- The header for each tree, i.e., '# Tree 1'  must contain '#' but the remaining text is unimportant.
+- Each tree consists of delimited separated parent-child relationships. The `arborist` default delimiter is " " but alternative delimiters may be passed via the `--edge-delim` argument. 
+- If input clone trees do not contain a normal clone (this is common), then the argument `--add-normal` should be used to tell `arborist` to append a normal clone to the root of each clone tree. Any cells assigned to the root will be inferred normal cells. 
+- Node identifiers must be integers.
 
 
 **Example:**

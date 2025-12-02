@@ -47,7 +47,7 @@ The `arborist` package requires the following dependencies:
 
 ### Installation via conda (recommended)
 
-`arborist` is available on Bioconda. You can easy install it via `conda/mamba` with:
+`arborist` will soon be available on Bioconda. Then you can easy install it via `conda/mamba` with:
 
 ```bash
 conda install -c bioconda -c conda-forge arborist
