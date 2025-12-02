@@ -1,0 +1,6 @@
+/* Increase the size of the header logo */
+.md-logo img,
+.md-logo svg {
+    height: 48px !important;   /* or 64px, 80px—whatever you want */
+    width: auto !important;
+}
