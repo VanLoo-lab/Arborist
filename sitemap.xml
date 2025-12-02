@@ -20,4 +20,16 @@
          <loc>https://vanloo-lab.github.io/Arborist/usage/</loc>
          <lastmod>2025-12-02</lastmod>
     </url>
+    <url>
+         <loc>https://vanloo-lab.github.io/Arborist/api/arborist/</loc>
+         <lastmod>2025-12-02</lastmod>
+    </url>
+    <url>
+         <loc>https://vanloo-lab.github.io/Arborist/api/read_trees/</loc>
+         <lastmod>2025-12-02</lastmod>
+    </url>
+    <url>
+         <loc>https://vanloo-lab.github.io/Arborist/api/treefit/</loc>
+         <lastmod>2025-12-02</lastmod>
+    </url>
 </urlset>
