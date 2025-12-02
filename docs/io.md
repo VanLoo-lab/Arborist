@@ -1,10 +1,10 @@
 ### Input Data
 Example input files can be found in the [example/input](example/input) directory.
 
-Arborist requires three inputs as three separate files:
-1. [a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
-2. [a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
-3. [a text file containing the set of candidate clone trees](#tree-format)
+Arborist requires three inputs as three separate files:  
+1.[a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
+2.[a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
+3.[a text file containing the set of candidate clone trees](#tree-format)
 
 
 #### **Read Counts File Format**
