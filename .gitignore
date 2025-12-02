@@ -1,3 +1,6 @@
+#mkdocs 
+site/
+
 # Byte-compiled / compiled Python files
 __pycache__/
 *.py[cod]

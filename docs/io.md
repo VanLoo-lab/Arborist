@@ -1,11 +1,11 @@
 ## Input Data
-Example input files can be found in the [example/input](example/input) directory.
+Example input files can be found in the [example/input](https://github.com/VanLoo-lab/Arborist/tree/main/example/input) directory.
 
 Arborist requires three inputs as three separate files:  
 
-1.[a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
-2.[a CSV file containing the initial SNV clustering](#initial-snv-clustering-format)
-3.[a text file containing the set of candidate clone trees](#tree-format)
+1. [a CSV file containing single-cell variant **A** and total **D** read count data](#read-counts-file-format)
+2. [a CSV file containing the initial SNV clustering](#initial-snv-clustering-file-format)
+3. [a text file containing the set of candidate clone trees](#tree-file-format)
 
 
 ### Read Counts File Format
@@ -79,7 +79,7 @@ The initial SNV clustering file should be in CSV format and contain no headers. 
 ---
 
 ## Output Data
-Some example output files are located in the [example/output](example/output) directory.
+Some example output files are located in the [example/output](https://github.com/VanLoo-lab/Arborist/tree/main/example/input) directory.
 Below is table describing the optional output files from `arborist`
 
 | argument | Description |

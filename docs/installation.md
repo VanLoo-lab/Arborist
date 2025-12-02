@@ -3,6 +3,7 @@
 The `arborist` package can be installed either via [conda (recommended)](#installation-via-conda-recommended) or [manually](#manual-installation) via `pip`.  Both methods will automatically install [dependencies](#dependencies)
 
 ## Installation via conda (recommended)
+**COMING SOON!**
 
 `arborist` is available on Bioconda. You can easy install it via `conda/mamba` with:
 
