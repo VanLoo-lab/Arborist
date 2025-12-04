@@ -42,7 +42,7 @@ options:
 ## Examples
 The following is a minimal `arborist` example with default parameters and no output files to test the installation.
 ```bash
-   arborist -R example/input/read_counts.csv \
+   $ arborist -R example/input/read_counts.csv \
    -T example/input/candidate_trees.txt \
    -Y example/input/input_clustering.csv 
 ```
@@ -63,7 +63,7 @@ ELBO: -311397.27
 
 This example demonstrates how to modify parameters and write relevant output files. 
 ```bash
-   arborist -R example/input/read_counts.csv \
+   $ arborist -R example/input/read_counts.csv \
    -T example/input/candidate_trees.txt \
    -Y example/input/input_clustering.csv \
    --prior 0.7  \
