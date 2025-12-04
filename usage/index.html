@@ -721,7 +721,7 @@ options:
 </code></pre>
 <h2 id="examples">Examples</h2>
 <p>The following is a minimal <code>arborist</code> example with default parameters and no output files to test the installation.</p>
-<pre><code class="language-bash">   arborist -R example/input/read_counts.csv \
+<pre><code class="language-bash">   $ arborist -R example/input/read_counts.csv \
    -T example/input/candidate_trees.txt \
    -Y example/input/input_clustering.csv 
 </code></pre>
@@ -738,7 +738,7 @@ ELBO: -311397.27
  0-&gt;2
 </code></pre>
 <p>This example demonstrates how to modify parameters and write relevant output files. </p>
-<pre><code class="language-bash">   arborist -R example/input/read_counts.csv \
+<pre><code class="language-bash">   $ arborist -R example/input/read_counts.csv \
    -T example/input/candidate_trees.txt \
    -Y example/input/input_clustering.csv \
    --prior 0.7  \
